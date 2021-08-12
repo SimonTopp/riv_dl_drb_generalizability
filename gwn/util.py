@@ -162,10 +162,10 @@ def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_siz
     return data
 '''
 
-def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_size=None):
-    if os.
+def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=None):
+    if isinstance(cat_data,str):
+        cat_data = np.load(os.path.join(cat_data, 'data.npz'))
     data = {}
-    cat_data = np.load(os.path.join(dataset_dir,'data.npz'))
     for category in ['pre_train', 'train', 'val', 'test']:
         if category!='pre_train':
             data['y_' + category] = cat_data['y_'+ category]
