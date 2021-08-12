@@ -1,0 +1,17 @@
+name: gwn
+channels:
+    - conda-forge
+    - defaults
+    - bioconda
+dependencies:
+    - matplotlib
+    - numpy
+    - scipy
+    - pandas
+    - torch
+    - argparse
+    - dask
+    - xarray
+    - zarr
+    - snakemake
+    - seaborn
