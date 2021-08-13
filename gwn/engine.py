@@ -5,7 +5,8 @@ class trainer():
     def __init__(self, scaler, in_dim, num_nodes, nhid , dropout, lrate, wdecay, device, supports, gcn_bool, addaptadj, aptinit, out_dim, kernel, blocks, layers):
         self.model = gwnet(device, num_nodes, dropout, supports=supports, gcn_bool=gcn_bool, addaptadj=addaptadj,
                            aptinit=aptinit, in_dim=in_dim, out_dim=out_dim, residual_channels=nhid,
-                           dilation_channels=nhid, skip_channels=nhid * 8, end_channels=nhid * 16, kernel_size=kernel, layers=layers)
+                           dilation_channels=nhid, skip_channels=nhid * 4, end_channels=nhid * 8, kernel_size=kernel, layers=layers)
+        #skip and end were 8 and 16 respectively
         self.model.to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lrate, weight_decay=wdecay)
         self.loss = util.rmse #was mae

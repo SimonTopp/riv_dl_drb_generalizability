@@ -132,3 +132,15 @@ rule plot_prepped_data:
     run:
         plot_obs(input[0], wildcards.variable, output[0],
                  partition=wildcards.partition)
+
+rule train:
+    input:
+        config['obs_temp'],
+        config['obs_flow'],
+        config['sntemp_file'],
+        config['dist_matrix']
+    output:
+        directory(config['out_dir'])
+        "{outdir}/test_results.csv"
+    run
+        python

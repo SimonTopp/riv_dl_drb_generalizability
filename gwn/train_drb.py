@@ -11,6 +11,7 @@ from engine import trainer
 from generate_training_data_drb import prep_data
 import pandas as pd
 import util
+import pickle
 
 
 ## Train Args that might change
@@ -54,55 +55,30 @@ parser.add_argument("--test_end_date",nargs='+',default=['1985-09-30', '2016-09-
 parser.add_argument("--y_vars",nargs="+",default=['seg_tave_water'])
 parser.add_argument("--primary_variable",type=str,default='temp')
 
-#parser.add_argument("--out_file",type=str, default='data/DRB_gwn')
-#parser.add_argument('--adjtype',type=str,default='doubletransition',help='adj type')
-#parser.add_argument('--aptonly',action='store_true',help='whether only adaptive adj')
-#parser.add_argument('--in_dim',type=int,default=8,help='inputs dimension')
-#parser.add_argument('--seed',type=int,default=99,help='random seed')
-#parser.add_argument('--save',type=str,default='data/DRB_gwn_full/train_val_drb/',help='save path')
-#parser.add_argument("--seq_length",type=int,default=365)
-#parser.add_argument("--period", default=np.nan)
-#parser.add_argument('--device',type=str,default='cuda',help='')
-#parser.add_argument('--num_nodes',type=int,default=456,help='number of nodes')
-
 
 #args = parser.parse_args()
-args = parser.parse_args(['--epochs', '1'])
+args = parser.parse_args(['--epochs', '5'])
 args.obs_flow_file='../data/in/obs_flow_subset'
 args.obs_temper_file = '../data/in/obs_temp_subset'
 args.pretrain_file = '../data/in/uncal_sntemp_input_output_subset'
 args.adjdata = '../data/in/adj_mat/adj_mx_subset.pkl'
-args.epochs_pre = 1
-args.expid = 'test3'
+args.epochs_pre = 5
+args.expid = 'FigTest'
 args.kernel_size = 4
-args.out_dim = 30
-args.offset = .5
+args.out_dim = 60
+args.offset = 1
 
-'''
-args.data = 'data/in/full_test'
-args.adjdata = 'data/adj_mat/adj_mx_subset.pkl'
-#args.adjtype = 'transition'
-args.device = 'cpu'
-#args.out_dim=30
-#args.seq_length=30
-#args.gcn_bool = Truea
-#args.addaptadj = True
-args.num_nodes = 42
-args.epochs_pre = 0
-args.batch_size = 15
-args.expid='testsub'
-args.kernel_size = 4
-args.layer_size = 3
-
-args.addaptadj = True
-args.gcn_bool = True
-
-'''
 def main():
     
     print(args)
+
     out_dir = os.path.join(args.out_dir,args.expid)
     os.makedirs(os.path.join(out_dir,'tmp'),exist_ok=True)
+
+    # Save the namespace for reloading the model
+    f = open(os.path.join(out_dir,"namespace.pkl"), "wb")
+    pickle.dump(vars(args), f)
+    f.close()
 
     data = prep_data(obs_temper_file=args.obs_temper_file,
         obs_flow_file=args.obs_flow_file,
@@ -177,7 +153,6 @@ def main():
                 print(log.format(iter, train_loss[-1], train_mape[-1], train_rmse[-1]),flush=True)
         t2 = time.time()
         train_log = train_log.append({'split':'pre_train','epoch':i,'rmse':np.mean(train_loss),'time':t2-t1}, ignore_index=True)
-        print(train_log)
         ptrain_time.append(t2-t1)
         #torch.save(engine.model.state_dict(), args.save+args.expid+"pre_epoch_"+str(i)+"_.pth")
     print("Average Pre_Training Time: {:.4f} secs/epoch".format(np.mean(ptrain_time)))
@@ -250,7 +225,7 @@ def main():
     print("Average Inference Time: {:.4f} secs".format(np.mean(val_time)))
 
     # Save the training log
-    train_log.to_csv(os.path.join(out_dir,'train_log.csv'))
+    train_log.to_csv(os.path.join(out_dir,'train_log.csv'),index=False)
 
     #testing
     bestid = np.argmin(his_loss)
@@ -293,12 +268,21 @@ def main():
 
     ## Save the results of the test data
     test_df = prepped_array_to_df(np.array(yhat), np.array(realy), test_dates, test_ids).dropna()
-    test_df.to_csv(out_dir + '/test_results.csv')
+    test_df.to_csv(out_dir + '/test_results.csv', index=False)
 
     print("Training finished")
     print("The valid loss on best model is", str(round(his_loss[bestid],4)))
     
     torch.save(engine.model.state_dict(), out_dir+"/weights_final_"+str(round(his_loss[bestid],2))+".pth")
+
+    ## Save the final adjacency matrix
+    adp = torch.nn.functional.softmax(torch.nn.functional.relu(torch.mm(engine.model.nodevec1, engine.model.nodevec2)), dim=1)
+    adp.to(torch.device('cpu'))
+    adp = adp.cpu().detach().numpy()
+    adp = adp*(1/np.max(adp))
+    df = pd.DataFrame(adp)
+    df.to_csv(os.path.join(out_dir,'adjmat_out.csv'), index=False)
+
     # Remove temporary weights
     shutil.rmtree(out_dir+'/tmp')
 
@@ -307,3 +291,4 @@ if __name__ == "__main__":
     main()
     t2 = time.time()
     print("Total time spent: {:.4f}".format(t2-t1))
+
