@@ -1,6 +1,7 @@
 import torch.optim as optim
-from model import *
-import util
+from gwn.model import *
+import gwn.util as util
+
 class trainer():
     def __init__(self, scaler, in_dim, num_nodes, nhid , dropout, lrate, wdecay, device, supports, gcn_bool, addaptadj, aptinit, out_dim, kernel, blocks, layers):
         self.model = gwnet(device, num_nodes, dropout, supports=supports, gcn_bool=gcn_bool, addaptadj=addaptadj,

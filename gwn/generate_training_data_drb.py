@@ -7,7 +7,6 @@ import argparse
 import numpy as np
 import os
 import pandas as pd
-import util
 
 import os.path
 
@@ -373,33 +372,10 @@ def prep_data(
         }
 
     if out_file:
-        if not os.path.exists(out_file):
-            os.makedirs(out_file)
-            os.makedirs(out_file+'/train_val_drb')
-            os.makedirs(out_file+'/train_val_drb/tmp')
+        if not os.path.exists(os.path.split(out_file)[0]):
+            os.makedirs(os.path.split(out_file)[0])
 
-
-        '''
-        np.savez_compressed(os.path.join(out_file, 'pre_train.npz'),
-                            x=data['x_train'],
-                            y=data['y_pre_train'])
-
-        np.savez_compressed(os.path.join(out_file,'train.npz'),
-                            x=data['x_train'],
-                            y=data['y_obs_train'],
-                            )
-
-        np.savez_compressed(os.path.join(out_file, 'test.npz'),
-                            x=data['x_test'],
-                            y=data['y_obs_tst'],
-                            )
-
-        np.savez_compressed(os.path.join(out_file,'val.npz'),
-                            x=data['x_val'],
-                            y=data['y_obs_val'],
-                            )
-        '''
-        np.savez_compressed(os.path.join(out_file,'data.npz'), **data)
+        np.savez_compressed(out_file, **data)
     return data
 
 

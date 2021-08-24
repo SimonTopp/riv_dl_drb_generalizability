@@ -1,22 +1,31 @@
 # Input files
-obs_flow: "data_DRB/obs_flow_subset"
-obs_temp: "data_DRB/obs_temp_subset"
-sntemp_file: "data_DRB/uncal_sntemp_input_output_subset"
-dist_matrix: "data_DRB/distance_matrix_subset.npz"
+obs_flow: "data/in/obs_flow_subset"
+obs_temp: "data/in/obs_temp_subset"
+sntemp_file: "data/in/uncal_sntemp_input_output_subset"
+adjdata: 'data/in/adj_mat/adj_mx_subset.pkl'
 
-out_dir: "output_DRB_test"
+out_dir: 'data/out'
+expid: '365_test'
+code_dir: "gwn"
+clean_prepped: True
 
-code_dir: "river_dl"
 ## Possible Xvars
 ## seg_ccov (cloud cover), seg_humid (humidity), seg_outlflow (streamflow out), seg_rain (rainfall), seg_shade (shade_fraction),
 ## seg_tave_air (air temp), seg_tave_gw (gw temp), seg_tave_sroff (surface runoff temp), seg_tave_upstream (upstream temp), seg_tave_water (water temp),
 ## seg_upstream_inflow, seg_width, seg_inc_gwflow (groundwater flow), seg_potet (potential ET), seg_sroff (surface runoff), seg_ssflow
 ## (interflow), seginc_sward (solar radiation), seg_length (length of segment), seg_slope, seg_elev, seg
-x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
-primary_variable: "temp"
 
-lambdas: [100,100]
+x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_shade", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
+primary_variable: 'temp'
 
+seq_length: 365
+out_dim: 365
+batch_size: 20
+epochs: 1
+epochs_pre: 1
+kernel_size: 3
+layer_size: 6
+offset: 1
 
 train_start_date:
   - '1985-10-01'
@@ -34,7 +43,3 @@ test_end_date:
   - '1985-09-30'
   - '2016-09-30'
   - '2021-09-30'
-
-pt_epochs: 20
-ft_epochs: 10
-hidden_size: 20
