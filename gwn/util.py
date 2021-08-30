@@ -164,7 +164,7 @@ def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_siz
 
 def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=None):
     if isinstance(cat_data,str):
-        cat_data = np.load(os.path.join(cat_data, 'data.npz'))
+        cat_data = np.load(os.path.join(cat_data, 'prepped.npz'))
     data = {}
     for category in ['pre_train', 'train', 'val', 'test']:
         if category!='pre_train':
@@ -174,7 +174,7 @@ def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=N
             data['y_' + category] = cat_data['y_' + category]
             data['x_' + category] = cat_data['x_train']
     #scaler = StandardScaler(mean=data['x_train'][..., 0].mean(), std=data['x_train'][..., 0].std())
-    scaler = StandardScaler(mean = 11.823, std = 7.48)
+    scaler = StandardScaler(mean = cat_data['y_mean'][cat_data['y_vars']=='seg_tave_water'], std = cat_data['y_std'][cat_data['y_vars']=='seg_tave_water'])
     # Data format
     #for category in ['pre_train', 'train', 'val', 'test']:
     #    data['x_' + category][..., 0] = scaler.transform(data['x_' + category][..., 0])
@@ -198,56 +198,34 @@ def rmse(y_pred, y_true):
         rmse_loss = 0.0
     return rmse_loss
 
-def masked_mse(preds, labels, null_val=np.nan):
-    if np.isnan(null_val):
-        mask = ~torch.isnan(labels)
+
+def mae(y_pred, y_true):
+    num_y_true = torch.count_nonzero(~torch.isnan(y_true))
+    if num_y_true > 0:
+        zero_or_error = torch.where(
+            torch.isnan(y_true), torch.zeros_like(y_true), y_pred - y_true
+        )
+        sum_errors = torch.sum(torch.abs(zero_or_error))
+        mae_loss = sum_errors/num_y_true
     else:
-        mask = (labels!=null_val)
-    mask = mask.float()
-    mask /= torch.mean((mask))
-    mask = torch.where(torch.isnan(mask), torch.zeros_like(mask), mask)
-    loss = (preds-labels)**2
-    loss = loss * mask
-    loss = torch.where(torch.isnan(loss), torch.zeros_like(loss), loss)
-    #loss = torch.nan_to_num(loss)
-    return torch.mean(loss)
+        mae_loss = 0.0
+    return mae_loss
 
-def masked_rmse(preds, labels, null_val=np.nan):
-    return torch.sqrt(masked_mse(preds=preds, labels=labels, null_val=null_val))
-
-
-def masked_mae(preds, labels, null_val=np.nan):
-    if np.isnan(null_val):
-        mask = ~torch.isnan(labels)
+def mape(y_pred, y_true):
+    num_y_true = torch.count_nonzero(~torch.isnan(y_true))
+    if num_y_true > 0:
+        zero_or_error = torch.where(
+            torch.isnan(y_true), torch.zeros_like(y_true), torch.abs((y_pred-y_true)/(y_true + 1E-5))
+        )
+        mape_loss = torch.sum(zero_or_error)/num_y_true
     else:
-        mask = (labels!=null_val)
-    mask = mask.float()
-    mask /=  torch.mean((mask))
-    mask = torch.where(torch.isnan(mask), torch.zeros_like(mask), mask)
-    loss = torch.abs(preds-labels)
-    loss = loss * mask
-    loss = torch.where(torch.isnan(loss), torch.zeros_like(loss), loss)
-    return torch.mean(loss)
-
-
-def masked_mape(preds, labels, null_val=np.nan):
-    if np.isnan(null_val):
-        mask = ~torch.isnan(labels)
-    else:
-        mask = (labels!=null_val)
-    mask = mask.float()
-    mask /=  torch.mean((mask))
-    mask = torch.where(torch.isnan(mask), torch.zeros_like(mask), mask)
-    loss = torch.abs(preds-labels)/labels
-    loss = loss * mask
-    loss = torch.where(torch.isnan(loss), torch.zeros_like(loss), loss)
-    return torch.mean(loss)
-
+        mape_loss = 0.0
+    return mape_loss
 
 def metric(pred, real):
-    mae = masked_mae(pred,real).item()  # npval was 0 for all and changed to defualt np.nan
-    mape = masked_mape(pred,real).item()
-    rmse = masked_rmse(pred,real).item()
-    return mae,mape,rmse
+    masked_mae = mae(pred,real).item()
+    masked_mape = mape(pred,real).item()
+    masked_rmse = rmse(pred,real).item()
+    return masked_mae,masked_mape,masked_rmse
 
 

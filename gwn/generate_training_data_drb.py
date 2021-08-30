@@ -3,16 +3,10 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import argparse
-import numpy as np
 import os
-import pandas as pd
-
 import os.path
-
 import pandas as pd
 import numpy as np
-import yaml
 import xarray as xr
 import datetime
 import pickle
@@ -110,12 +104,25 @@ def split_into_batches(data_array, seq_len=365, offset=1):
     (batch_size), nfeat]
     """
     combined = []
-    for i in range(int(1 / offset)):
-        start = int(i * offset * seq_len)
+    i = 0
+    start = int(i * offset * seq_len)
+    while start < seq_len:
         idx = np.arange(start=start, stop=data_array.shape[1] + 1, step=seq_len)
         split = np.split(data_array, indices_or_sections=idx, axis=1)
         # add all but the first and last batch since they will be smaller
         combined.extend([s for s in split if s.shape[1] == seq_len])
+        i += 1
+        start = int(i * offset * seq_len)
+    '''
+    for i in range(int(1 / offset)+1):
+        while start < seq_len:
+        start = int(i * offset * seq_len)
+
+            idx = np.arange(start=start, stop=data_array.shape[1] + 1, step=seq_len)
+            split = np.split(data_array, indices_or_sections=idx, axis=1)
+        # add all but the first and last batch since they will be smaller
+            combined.extend([s for s in split if s.shape[1] == seq_len])
+    '''
     combined = np.asarray(combined)
     return combined
 
@@ -171,7 +178,7 @@ def get_exclude_start_end(exclude_grp):
 
 
 
-def convert_batch_reshape(dataset, seq_len=365, offset=1, y = False, period = np.nan):
+def convert_batch_reshape(dataset, seq_len=365, offset=1, y = False):
     """
     convert xarray dataset into numpy array, swap the axes, batch the array and
     reshape for training
@@ -179,8 +186,10 @@ def convert_batch_reshape(dataset, seq_len=365, offset=1, y = False, period = np
     :param seq_len: [int] length of sequences (i.e., 365)
     :param offset: [float] 0-1, how to offset the batches (e.g., 0.5 means that
     the first batch will be 0-365 and the second will be 182-547)
+    :param period: [int] 0-1, what proportion of the sequence to predict on
     :return: [numpy array] batched and reshaped dataset
     """
+
     # convert xr.dataset to numpy array
     dataset = dataset.transpose("seg_id_nat", "date")
 
@@ -202,7 +211,8 @@ def convert_batch_reshape(dataset, seq_len=365, offset=1, y = False, period = np
     # after [nseq, seq_len, nseg, nfeat]
     #reshaped = reshape_for_training(batched)
     reshaped = np.moveaxis(batched, [0,1,2,3], [0,2,1,3])
-    if y & np.isfinite(period):
+    if y and offset<1:
+        period = int(seq_len*offset)
         reshaped = reshaped[:,-period:,...]
 
     return reshaped
@@ -240,7 +250,6 @@ def prep_data(
     y_vars= ["seg_tave_water", "seg_outflow"],
     seq_length = 365,
     offset = 1,
-    period = None,
     primary_variable="temp",
     #catch_prop_file=None,
     #exclude_file=None,
@@ -319,6 +328,7 @@ def prep_data(
     y_obs = read_multiple_obs([obs_temper_file, obs_flow_file], x_data)
     y_obs = y_obs[y_vars]
     y_pre = ds_pre[y_vars]
+    y_pre['seg_tave_water'].values = np.where(y_pre['seg_tave_water'].values < -10, np.nan, y_pre['seg_tave_water'].values)
 
     y_obs_trn, y_obs_val, y_obs_tst = separate_trn_tst(
         y_obs,
@@ -359,14 +369,14 @@ def prep_data(
         "dates_val": coord_as_reshaped_array(x_val, "date", offset=offset, seq_len=seq_length),
         "ids_test": coord_as_reshaped_array(x_tst, "seg_id_nat", offset=offset, seq_len=seq_length),
         "dates_test": coord_as_reshaped_array(x_tst, "date", offset=offset, seq_len=seq_length),
-        "y_pre_train": convert_batch_reshape(y_pre_trn, offset=offset, seq_len=seq_length, y=True, period=period),
-        "y_train": convert_batch_reshape(y_obs_trn, offset=offset, seq_len=seq_length, y=True, period=period),
-        "y_val": convert_batch_reshape(y_obs_val, offset=offset, seq_len=seq_length, y=True, period=period),
-        "y_test": convert_batch_reshape(y_obs_tst, offset=offset, seq_len=seq_length, y=True, period=period),
+        "y_pre_train": convert_batch_reshape(y_pre_trn, offset=offset, seq_len=seq_length, y=True),
+        "y_train": convert_batch_reshape(y_obs_trn, offset=offset, seq_len=seq_length, y=True),
+        "y_val": convert_batch_reshape(y_obs_val, offset=offset, seq_len=seq_length, y=True),
+        "y_test": convert_batch_reshape(y_obs_tst, offset=offset, seq_len=seq_length, y=True),
         "y_vars": np.array(y_vars),
-        'period': np.array([period]),
-        'y_pre_train_val': convert_batch_reshape(y_pre_val, offset=offset, seq_len=seq_length, y=True, period=period),
-        'y_pre_train_test': convert_batch_reshape(y_pre_tst, offset=offset, seq_len=seq_length, y=True, period=period),
+        'offset': np.array([offset]),
+        'y_pre_train_val': convert_batch_reshape(y_pre_val, offset=offset, seq_len=seq_length, y=True),
+        'y_pre_train_test': convert_batch_reshape(y_pre_tst, offset=offset, seq_len=seq_length, y=True),
         "y_std": y_std.to_array().values,
         "y_mean": y_mean.to_array().values,
         }

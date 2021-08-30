@@ -1,18 +1,14 @@
-name: gwn
+name: gwn_gpu
 channels:
     - conda-forge
     - defaults
     - bioconda
+    - pytorch
 dependencies:
+    - python=3
+    - pytorch::pytorch==1.7.1
     - matplotlib
-    - numpy
-    - scipy
     - pandas
-    - torch
-    - argparse
-    - dask
     - xarray
-    - zarr
-    - snakemake
+    - bioconda::snakemake
     - seaborn
-    - jupyterlab

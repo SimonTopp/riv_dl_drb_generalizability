@@ -5,7 +5,7 @@ sntemp_file: "data/in/uncal_sntemp_input_output_subset"
 adjdata: 'data/in/adj_mat/adj_mx_subset.pkl'
 
 out_dir: 'data/out'
-expid: '365_test'
+expid: '60_test'
 code_dir: "gwn"
 clean_prepped: True
 
@@ -18,14 +18,15 @@ clean_prepped: True
 x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_shade", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
 primary_variable: 'temp'
 
-seq_length: 365
-out_dim: 365
-batch_size: 20
-epochs: 1
-epochs_pre: 1
-kernel_size: 3
-layer_size: 6
-offset: 1
+seq_length: 100
+out_dim: 60
+batch_size: 10
+epochs: 5
+epochs_pre: 5
+kernel_size: 8
+layer_size: 4
+offset: 0.25
+scale_y: True
 
 train_start_date:
   - '1985-10-01'

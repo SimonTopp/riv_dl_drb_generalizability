@@ -16,7 +16,7 @@ def plot_adj(out_dir,adj_mat, outfile):
 def plot_ts(out_dir):
     test_df = pd.read_csv(os.path.join(out_dir, 'test_results.csv'))
     counts = test_df.dropna().groupby('seg_id_nat').size()
-    filt = counts[counts > 1000].index.tolist()[:3]
+    filt = counts[counts > 1000].index.tolist()[:4]
     test_df_filt = test_df[test_df.seg_id_nat.isin(filt)]
     df_piv = test_df_filt.melt(id_vars=['date','seg_id_nat']).dropna()
     fg = sns.FacetGrid(data = df_piv,row='seg_id_nat',hue='variable',aspect=3)
