@@ -19,8 +19,9 @@ def plot_ts(out_dir):
     filt = counts[counts > 1000].index.tolist()[:4]
     test_df_filt = test_df[test_df.seg_id_nat.isin(filt)]
     df_piv = test_df_filt.melt(id_vars=['date','seg_id_nat']).dropna()
-    fg = sns.FacetGrid(data = df_piv,row='seg_id_nat',hue='variable',aspect=3)
-    fg.map(plt.scatter,'date','value', alpha=.2,s=2).set_xticklabels([]).add_legend()
+    df_piv['date']= pd.to_datetime(df_piv['date'])
+    fg = sns.FacetGrid(data = df_piv,row='seg_id_nat',hue='variable',aspect=3, sharex=False)
+    fg.map(plt.scatter,'date','value', alpha=.2,s=2).add_legend()
     fg.savefig(os.path.join(out_dir,'figs/ExampleTS.png'))
     plt.close()
 

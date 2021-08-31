@@ -1,21 +1,29 @@
 import os
+
+import snakemake.io
+
 configfile: "config.yml"
 
 from gwn.generate_training_data_drb import prep_data
 from gwn.test_drb import plot_results
 from gwn.train_drb import train
 
-out_dir = config['out_dir']
-expid = config['expid']
+#out_dir = config['out_dir']
 
-sequences = [30,60,90,120,180,365]
-offsets = [1,.1]
+#expid = snakemake.io.expand("{outdir}/s{seq_length}_o{offset,_l{layers}_k{kernels}",
+#    outdir=config[oout_dir,
+#    seq_length=config['seq_length'],
+#    ],
+#    offset=[1,.1]),
 
-out_dir = out_dir + '/' + expid
+#out_dir = out_dir + '/' + expid
 
 rule all:
     input:
-        directory(out_dir+"/figs")#/training_loss.png"
+        expand("{outdir}/{seq_length}_{offset}/figs/training_loss.png",
+            outdir=config["out_dir"],
+            seq_length=config["seq_length"],
+            offset=config['offset']),
 
 rule prep_io_data:
     input:
@@ -24,7 +32,7 @@ rule prep_io_data:
          config['sntemp_file'],
         # config['dist_matrix'],
     output:
-        out_dir+"/prepped.npz"
+        config['out_dir']+"/{seq_length}_{offset}/prepped.npz",
     run:
         prep_data(input[0], input[1], input[2],
             x_vars=config['x_vars'],
@@ -35,21 +43,21 @@ rule prep_io_data:
             test_start_date=config['test_start_date'],
             test_end_date=config['test_end_date'],
             primary_variable=config['primary_variable'],
-            seq_length=config['seq_length'],
-            offset=config['offset'],
-            out_file=out_dir + "/prepped.npz",
+            seq_length= int(wildcards.seq_length), #config['seq_length'],
+            offset= float(wildcards.offset), #config['offset'],
+            out_file= output[0], #out_dir + "/prepped.npz",
             normalize_y=config['scale_y']
         )
 
 rule train:
     input:
-        out_dir+"/prepped.npz",
+        config['out_dir'] + "/{seq_length}_{offset}/prepped.npz",
         adjdata= config['adjdata'],
     output:
-        out_dir+"/adjmat_out.csv",
-        out_dir+"/adjmat_pre_out.csv",
-        out_dir+"/test_results.csv",
-        out_dir+"/train_log.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/adjmat_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/adjmat_pre_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/test_results.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/train_log.csv",
 
     run:
         train(input[0],
@@ -58,7 +66,7 @@ rule train:
             batch_size=config['batch_size'],
             epochs=config['epochs'],
             epochs_pre=config['epochs_pre'],
-            expid=config['expid'],
+            expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
             kernel_size=config['kernel_size'],
             layer_size=config['layer_size'],
             clean_prepped=config['clean_prepped'],
@@ -67,12 +75,12 @@ rule train:
 
 rule viz:
     input:
-        out_dir+"/adjmat_out.csv",
-        out_dir+"/adjmat_pre_out.csv",
-        out_dir+"/test_results.csv",
-        out_dir+"/train_log.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/adjmat_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/adjmat_pre_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/test_results.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/train_log.csv",
     output:
-        out_dir+"/figs/training_loss.png"
+        config['out_dir']+"/{seq_length}_{offset}/figs/training_loss.png",
     run:
-        plot_results(out_dir)
+        plot_results(config['out_dir']+"/"+str(wildcards.seq_length)+"_"+str(wildcards.offset))
 

@@ -90,12 +90,17 @@ def train(data_in,
             train_mae.append(metrics[0])
             train_mape.append(metrics[1])
             train_rmse.append(metrics[2])
-            if iter % print_every == 0 :
-                log = 'Pre_Iter: {:03d}, Train MAE: {:.4f}, Train MAPE: {:.4f}, Train RMSE: {:.4f}'
-                print(log.format(iter, train_mae[-1], train_mape[-1], train_rmse[-1]),flush=True)
+            #if iter % print_every == 0 :
+             #   log = 'Pre_Iter: {:03d}, Train MAE: {:.4f}, Train MAPE: {:.4f}, Train RMSE: {:.4f}'
+             #   print(log.format(iter, train_mae[-1], train_mape[-1], train_rmse[-1]),flush=True)
         t2 = time.time()
-        train_log = train_log.append({'split':'pre_train','epoch':i,'rmse':np.mean(train_rmse),'time':t2-t1}, ignore_index=True)
+        mtrain_mae = np.mean(train_mae)
+        mtrain_mape = np.mean(train_mape)
+        mtrain_rmse = np.mean(train_rmse)
+        train_log = train_log.append({'split':'pre_train','epoch':i,'rmse':mtrain_rmse,'time':t2-t1}, ignore_index=True)
         ptrain_time.append(t2-t1)
+        log = 'PT_Epoch: {:03d}, PTrain MAE: {:.4f}, PTrain MAPE: {:.4f}, PTrain RMSE: {:.4f}, PTraining Time: {:.4f}/epoch'
+        print(log.format(i, mtrain_mae, mtrain_mape, mtrain_rmse,(t2 - t1)),flush=True)
         #torch.save(engine.model.state_dict(), args.save+args.expid+"pre_epoch_"+str(i)+"_.pth")
     print("Average Pre_Training Time: {:.4f} secs/epoch".format(np.mean(ptrain_time)))
 
@@ -131,17 +136,15 @@ def train(data_in,
             train_mae.append(metrics[0])
             train_mape.append(metrics[1])
             train_rmse.append(metrics[2])
-            if iter % print_every == 0 :
-                log = 'Iter: {:03d}, Train MAE: {:.4f}, Train MAPE: {:.4f}, Train RMSE: {:.4f}'
-                print(log.format(iter, train_mae[-1], train_mape[-1], train_rmse[-1]),flush=True)
+            #if iter % print_every == 0 :
+            #    log = 'Iter: {:03d}, Train MAE: {:.4f}, Train MAPE: {:.4f}, Train RMSE: {:.4f}'
+            #    print(log.format(iter, train_mae[-1], train_mape[-1], train_rmse[-1]),flush=True)
         t2 = time.time()
         train_time.append(t2-t1)
         #validation
         valid_mae = []
         valid_mape = []
         valid_rmse = []
-
-
         s1 = time.time()
         for iter, (x, y) in enumerate(dataloader['val_loader'].get_iterator()):
             testx = torch.Tensor(x).to(device)

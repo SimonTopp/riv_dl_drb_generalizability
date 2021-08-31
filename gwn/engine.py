@@ -39,9 +39,6 @@ class trainer():
             metrics = util.metric(predict,real)
         else:
             metrics = util.metric(predict,real)
-        #mape = util.mape(predict,real).item()
-        #rmse = util.rmse(predict,real).item()
-        #return loss.item(),mape,rmse
         return metrics
 
     def eval(self, input, real_val):
@@ -52,7 +49,6 @@ class trainer():
         output = output.transpose(1,3)
         #output = [batch_size,12,num_nodes,1]
         real = torch.unsqueeze(real_val,dim=1)
-        #real = self.scaler.inverse_transform(real)
         predict = output
         loss = self.loss(predict, real)
         if self.scale_y:
@@ -61,7 +57,4 @@ class trainer():
             metrics = util.metric(predict,real)
         else:
             metrics = util.metric(predict,real)
-        #mape = util.mape(predict,real).item()
-        #rmse = util.rmse(predict,real).item()
-        #return loss.item(),mape,rmse
         return metrics

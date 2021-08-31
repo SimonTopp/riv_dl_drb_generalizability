@@ -18,15 +18,15 @@ clean_prepped: True
 x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_shade", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
 primary_variable: 'temp'
 
-seq_length: 100
-out_dim: 60
+seq_length: [120, 365]
+# out_dim: 60
 batch_size: 10
-epochs: 5
-epochs_pre: 5
+epochs: 1
+epochs_pre: 0
 kernel_size: 8
 layer_size: 4
-offset: 0.25
-scale_y: True
+offset: [1]
+scale_y: False
 
 train_start_date:
   - '1985-10-01'
