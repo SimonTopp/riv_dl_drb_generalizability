@@ -21,7 +21,7 @@ def train(data_in,
           layer_size=3,
           clean_prepped=False,
           print_every=15,
-          learning_rate=0.0001,
+          learning_rate=0.001,
           dropout=0.3,
           weight_decay=0.0001,
           gcn_bool=True,
@@ -180,11 +180,29 @@ def train(data_in,
     # Save the training log
     train_log.to_csv(os.path.join(out_dir,'train_log.csv'),index=False)
 
-    #testing
     bestid = np.argmin(his_loss)
     engine.model.load_state_dict(torch.load(out_dir+'/tmp/'+expid+"_epoch_"+str(bestid+1)+"_"+str(round(his_loss[bestid],2))+".pth"))
 
+    trainx = data['x_train']
+    trainx=torch.Tensor(trainx).to(device)
+    trainx=trainx.transpose(1,3)
+    engine.model.eval()
+    with torch.no_grad():
+        yhat_train = engine.model(trainx).transpose(1,3)
+    yhat_train = yhat_train.squeeze()
 
+    '''
+    ## Training Predictions
+    outputs_train = []
+    for iter, (x, y) in enumerate(dataloader['train_loader'].get_iterator()):
+        trainx = torch.Tensor(x).to(device)
+        trainx = trainx.transpose(1,3)
+        with torch.no_grad():
+            preds = engine.model(trainx).transpose(1,3)
+        outputs_train.append(preds.squeeze())
+    outputs_train=torch.cat(outputs_train,dim=0)
+    '''
+    #testing
     outputs = []
     realy = torch.Tensor(dataloader['y_test']).to(device)
     realy = realy.transpose(1,3)[:,0,:,:]
@@ -199,23 +217,38 @@ def train(data_in,
     yhat = torch.cat(outputs,dim=0)
     yhat = yhat[:realy.size(0),...]
 
+    ##Calculate UQ bounds
+    ci_low, ci_high = util.calc_uq(data['x_train'],   #xtrain,
+                              data['y_train'],   #ytrain
+                              yhat_train,     #y_pred_train,
+                              data['x_test'],    #x_test,
+                              yhat,              #y_pred_test,
+                              scaler,
+                              scale_y=True,
+                              quantile=0.95)
+
+    if scale_y:
+        yhat = scaler.inverse_transform(yhat)
+
     test_dates = np.transpose(data['dates_test'], (0, 3, 2, 1)).squeeze()
     test_ids = np.transpose(data['ids_test'], (0, 3, 2, 1)).squeeze()
 
     test_ids = test_ids[:, :, -out_dim:]
     test_dates = test_dates[:, :, -out_dim:]
 
-    def prepped_array_to_df(data_array, obs, dates, ids):
+    def prepped_array_to_df(data_array, obs, dates, ids, ci_high, ci_low):
 
         df_obs = pd.DataFrame(obs.flatten(), columns=['temp_ob'])
         df_preds = pd.DataFrame(data_array.flatten(), columns=['temp_pred'])
         df_dates = pd.DataFrame(dates.flatten(), columns=["date"])
         df_ids = pd.DataFrame(ids.flatten(), columns=["seg_id_nat"])
-        df = pd.concat([df_dates, df_ids, df_preds, df_obs], axis=1)
+        df_cih = pd.DataFrame(ci_high.flatten(), columns=['ci_high'])
+        df_cil = pd.DataFrame(ci_low.flatten(), columns =['ci_low'])
+        df = pd.concat([df_dates, df_ids, df_preds, df_obs, df_cih,df_cil], axis=1)
         return df
 
     ## Save the results of the test data
-    test_df = prepped_array_to_df(np.array(yhat.cpu()), np.array(realy.cpu()), test_dates, test_ids).dropna()
+    test_df = prepped_array_to_df(np.array(yhat.cpu()), np.array(realy.cpu()), test_dates, test_ids, np.array(ci_high.cpu()), np.array(ci_low.cpu())).dropna()
     test_df.to_csv(out_dir + '/test_results.csv', index=False)
 
     print("Training finished")

@@ -52,7 +52,7 @@ class trainer():
         predict = output
         loss = self.loss(predict, real)
         if self.scale_y:
-            real = self.scaler.inverse_transform(real)
+        #    real = self.scaler.inverse_transform(real)
             predict = self.scaler.inverse_transform(output.detach())
             metrics = util.metric(predict,real)
         else:

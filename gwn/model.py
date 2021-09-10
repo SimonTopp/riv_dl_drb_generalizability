@@ -92,7 +92,7 @@ class gwnet(nn.Module):
 
 
 
-
+# Receptive field = (Kernel-1) * (2^n_layers * n_blocks) (not really, double check)
         for b in range(blocks):
             additional_scope = kernel_size - 1
             new_dilation = 1
@@ -150,8 +150,8 @@ class gwnet(nn.Module):
         # calculate the current adaptive adj matrix once per iteration
         new_supports = None
         if self.gcn_bool and self.addaptadj and self.supports is not None:
-            adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1)
-            new_supports = self.supports + [adp]
+            adp = F.softmax(F.relu(torch.mm(self.nodevec1, self.nodevec2)), dim=1) ## Try chaning this to 0 to see whats up
+            new_supports = self.supports + [adp]  ###Maybe add some coefficient to this to decrease the rate at which it changes
 
         # WaveNet layers
         for i in range(self.blocks * self.layers):

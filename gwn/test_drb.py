@@ -12,16 +12,26 @@ def plot_adj(out_dir,adj_mat, outfile):
     plt.savefig(os.path.join(out_dir,outfile))
     plt.close()
 
-
 def plot_ts(out_dir):
+    viridis = cm.get_cmap('viridis')
     test_df = pd.read_csv(os.path.join(out_dir, 'test_results.csv'))
+    test_df['date'] = pd.to_datetime(test_df['date'])
+    test_df = test_df.set_index('date').loc['2011-10-01':'2019-09-30']
     counts = test_df.dropna().groupby('seg_id_nat').size()
     filt = counts[counts > 1000].index.tolist()[:4]
-    test_df_filt = test_df[test_df.seg_id_nat.isin(filt)]
-    df_piv = test_df_filt.melt(id_vars=['date','seg_id_nat']).dropna()
-    df_piv['date']= pd.to_datetime(df_piv['date'])
-    fg = sns.FacetGrid(data = df_piv,row='seg_id_nat',hue='variable',aspect=3, sharex=False)
-    fg.map(plt.scatter,'date','value', alpha=.2,s=2).add_legend()
+    test_df_filt = test_df[test_df.seg_id_nat.isin(filt)].reset_index()
+    test_df_filt['ci_low'] = np.where(test_df_filt['ci_low'] < 0,0,test_df_filt['ci_low'])
+    fg = sns.FacetGrid(data=test_df_filt, row='seg_id_nat', aspect=3, sharex=False, sharey=False)
+    fg.map(plt.scatter, 'date', 'temp_ob', alpha=.2, s=2, label='Observed', color=viridis(.3))
+    fg.map(plt.scatter, 'date', 'temp_pred', alpha=.2, s=2, label='Predicted', color=viridis(.8))
+    fg.map(plt.fill_between, 'date', 'ci_low', 'ci_high',
+           alpha=0.4,
+           edgecolor=None,
+           color='#d3d3d3',
+           linewidth=0,
+           zorder=1,
+           label="Uncertainty")
+    fg.add_legend().set_axis_labels(y_var='Temp (°C)', x_var='Date')
     fg.savefig(os.path.join(out_dir,'figs/ExampleTS.png'))
     plt.close()
 

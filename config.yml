@@ -5,9 +5,9 @@ sntemp_file: "data/in/uncal_sntemp_input_output_subset"
 adjdata: 'data/in/adj_mat/adj_mx_subset.pkl'
 
 out_dir: 'data/out'
-expid: '60_test'
+expid: '365_test'
 code_dir: "gwn"
-clean_prepped: True
+clean_prepped: False
 
 ## Possible Xvars
 ## seg_ccov (cloud cover), seg_humid (humidity), seg_outlflow (streamflow out), seg_rain (rainfall), seg_shade (shade_fraction),
@@ -16,17 +16,19 @@ clean_prepped: True
 ## (interflow), seginc_sward (solar radiation), seg_length (length of segment), seg_slope, seg_elev, seg
 
 x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_shade", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
+y_vars: ['seg_tave_water']
 primary_variable: 'temp'
 
-seq_length: [120, 365]
+seq_length: [365]
 # out_dim: 60
 batch_size: 10
-epochs: 1
+epochs: 5
 epochs_pre: 0
 kernel_size: 8
 layer_size: 4
+learning_rate: 0.001
 offset: [1]
-scale_y: False
+scale_y: True
 
 train_start_date:
   - '1985-10-01'
