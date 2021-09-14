@@ -1,10 +1,10 @@
 import shutil
-
 import torch
 import numpy as np
 import time
 import os.path
 #import matplotlib.pyplot as plt
+import gwn.engine
 from gwn.engine import trainer
 import pandas as pd
 import gwn.util as util
@@ -20,57 +20,37 @@ def train(data_in,
           kernel_size=3,
           layer_size=3,
           clean_prepped=False,
-          print_every=15,
           learning_rate=0.001,
           dropout=0.3,
-          weight_decay=0.0001,
           gcn_bool=True,
           addaptadj=True,
           randomadj=False,
           n_blocks=4,
-          nhid=32,
           scale_y=False):
     
     out_dir = os.path.join(out_dir,expid)
     #out_dir = args.out_dir
     os.makedirs(os.path.join(out_dir,'tmp'),exist_ok=True)
-
-    # Save the namespace for reloading the model
-    #f = open(os.path.join(out_dir,"namespace.pkl"), "wb")
-    #pickle.dump(locals(), f)
-    #f.close()
-
-    data = np.load(data_in)
-    out_dim = data['y_train'].shape[1]
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Training on {device}")
-    #sensor_ids, sensor_id_to_ind, adj_mx = util.load_adj(args.adjdata,args.adjtype)
-    sensor_ids, sensor_id_to_ind, adj_mx = util.load_pickle(adj_data)
-    dataloader = util.load_dataset(data, batch_size, batch_size, batch_size)
-    scaler = dataloader['scaler']
-    #supports = [torch.tensor(i).to(device) for i in adj_mx]
-    supports = [torch.tensor(adj_mx).to(device).float()]
+
+    data, dataloader, engine = util.load_model(data_in,
+               adj_data,
+               out_dir,
+               batch_size,
+               kernel_size=kernel_size,
+               layer_size=layer_size,
+               learning_rate=learning_rate,
+               randomadj=randomadj,
+               n_blocks=n_blocks,
+               scale_y=scale_y,
+               load_weights=False)
 
 
-    in_dim = len(data['x_cols'])
-    num_nodes = adj_mx.shape[0]
-
-    if randomadj:
-        adjinit = None
-    else:
-        adjinit = supports[0]
-
-    #if args.aptonly:
-    #    supports = None
-
-    engine = trainer(scaler, in_dim, num_nodes, nhid, dropout,
-                         learning_rate, weight_decay, device, supports, gcn_bool, addaptadj,
-                         adjinit, out_dim, kernel_size, n_blocks, layer_size, scale_y)
 
     print("start pre_training...", flush=True)
     ptrain_time = []
     train_log = pd.DataFrame(columns = ['split','epoch','rmse','time'])
+
     for i in range(1,epochs_pre+1):
         #if i % 10 == 0:
             #lr = max(0.000002,args.learning_rate * (0.1 ** (i // 10)))
@@ -87,9 +67,9 @@ def train(data_in,
             trainy = torch.Tensor(y).to(device)
             trainy = trainy.transpose(1, 3)
             metrics = engine.train(trainx, trainy[:,0,:,:])
-            train_mae.append(metrics[0])
-            train_mape.append(metrics[1])
-            train_rmse.append(metrics[2])
+            train_mae.append(metrics[0].item())
+            train_mape.append(metrics[1].item())
+            train_rmse.append(metrics[2].item())
             #if iter % print_every == 0 :
              #   log = 'Pre_Iter: {:03d}, Train MAE: {:.4f}, Train MAPE: {:.4f}, Train RMSE: {:.4f}'
              #   print(log.format(iter, train_mae[-1], train_mape[-1], train_rmse[-1]),flush=True)
@@ -117,6 +97,7 @@ def train(data_in,
     his_loss =[]
     val_time = []
     train_time = []
+
     for i in range(1,epochs+1):
         #if i % 10 == 0:
             #lr = max(0.000002,args.learning_rate * (0.1 ** (i // 10)))
@@ -182,79 +163,11 @@ def train(data_in,
 
     bestid = np.argmin(his_loss)
     engine.model.load_state_dict(torch.load(out_dir+'/tmp/'+expid+"_epoch_"+str(bestid+1)+"_"+str(round(his_loss[bestid],2))+".pth"))
-
-    trainx = data['x_train']
-    trainx=torch.Tensor(trainx).to(device)
-    trainx=trainx.transpose(1,3)
-    engine.model.eval()
-    with torch.no_grad():
-        yhat_train = engine.model(trainx).transpose(1,3)
-    yhat_train = yhat_train.squeeze()
-
-    '''
-    ## Training Predictions
-    outputs_train = []
-    for iter, (x, y) in enumerate(dataloader['train_loader'].get_iterator()):
-        trainx = torch.Tensor(x).to(device)
-        trainx = trainx.transpose(1,3)
-        with torch.no_grad():
-            preds = engine.model(trainx).transpose(1,3)
-        outputs_train.append(preds.squeeze())
-    outputs_train=torch.cat(outputs_train,dim=0)
-    '''
-    #testing
-    outputs = []
-    realy = torch.Tensor(dataloader['y_test']).to(device)
-    realy = realy.transpose(1,3)[:,0,:,:]
-
-    for iter, (x, y) in enumerate(dataloader['test_loader'].get_iterator()):
-        testx = torch.Tensor(x).to(device)
-        testx = testx.transpose(1,3)
-        with torch.no_grad():
-            preds = engine.model(testx).transpose(1,3)
-        outputs.append(preds.squeeze())
-
-    yhat = torch.cat(outputs,dim=0)
-    yhat = yhat[:realy.size(0),...]
-
-    ##Calculate UQ bounds
-    ci_low, ci_high = util.calc_uq(data['x_train'],   #xtrain,
-                              data['y_train'],   #ytrain
-                              yhat_train,     #y_pred_train,
-                              data['x_test'],    #x_test,
-                              yhat,              #y_pred_test,
-                              scaler,
-                              scale_y=True,
-                              quantile=0.95)
-
-    if scale_y:
-        yhat = scaler.inverse_transform(yhat)
-
-    test_dates = np.transpose(data['dates_test'], (0, 3, 2, 1)).squeeze()
-    test_ids = np.transpose(data['ids_test'], (0, 3, 2, 1)).squeeze()
-
-    test_ids = test_ids[:, :, -out_dim:]
-    test_dates = test_dates[:, :, -out_dim:]
-
-    def prepped_array_to_df(data_array, obs, dates, ids, ci_high, ci_low):
-
-        df_obs = pd.DataFrame(obs.flatten(), columns=['temp_ob'])
-        df_preds = pd.DataFrame(data_array.flatten(), columns=['temp_pred'])
-        df_dates = pd.DataFrame(dates.flatten(), columns=["date"])
-        df_ids = pd.DataFrame(ids.flatten(), columns=["seg_id_nat"])
-        df_cih = pd.DataFrame(ci_high.flatten(), columns=['ci_high'])
-        df_cil = pd.DataFrame(ci_low.flatten(), columns =['ci_low'])
-        df = pd.concat([df_dates, df_ids, df_preds, df_obs, df_cih,df_cil], axis=1)
-        return df
-
-    ## Save the results of the test data
-    test_df = prepped_array_to_df(np.array(yhat.cpu()), np.array(realy.cpu()), test_dates, test_ids, np.array(ci_high.cpu()), np.array(ci_low.cpu())).dropna()
-    test_df.to_csv(out_dir + '/test_results.csv', index=False)
+    torch.save(engine.model.state_dict(), out_dir + "/weights_final.pth")
 
     print("Training finished")
     print("The valid loss on best model is", str(round(his_loss[bestid],4)))
     
-    torch.save(engine.model.state_dict(), out_dir+"/weights_final_"+str(round(his_loss[bestid],2))+".pth")
 
     ## Save the final adjacency matrix
     adp = torch.nn.functional.softmax(torch.nn.functional.relu(torch.mm(engine.model.nodevec1, engine.model.nodevec2)), dim=1)
@@ -267,9 +180,6 @@ def train(data_in,
     # Remove temporary weights
     shutil.rmtree(out_dir+'/tmp')
 
-    ## Remove the prepped data
-    if clean_prepped:
-        os.remove(data_in)
 '''
 if __name__ == "__main__":
     t1 = time.time()

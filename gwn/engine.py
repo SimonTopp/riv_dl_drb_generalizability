@@ -1,12 +1,15 @@
+import torch
 import torch.optim as optim
 from gwn.model import *
-import gwn.util as util
+#import gwn.util as util
 
 class trainer():
-    def __init__(self, scaler, in_dim, num_nodes, nhid , dropout, lrate, wdecay, device, supports, gcn_bool, addaptadj, aptinit, out_dim, kernel, blocks, layers, scale_y):
+    def __init__(self, scaler, in_dim, num_nodes, lrate, device, supports, aptinit, out_dim, kernel,
+                 blocks, layers, scale_y, nhid=32, wdecay=0.0001, dropout=0.3, gcn_bool=True, addaptadj=True):
         self.model = gwnet(device, num_nodes, dropout, supports=supports, gcn_bool=gcn_bool, addaptadj=addaptadj,
                            aptinit=aptinit, in_dim=in_dim, out_dim=out_dim, residual_channels=nhid,
-                           dilation_channels=nhid, skip_channels=nhid * 4, end_channels=nhid * 8, kernel_size=kernel, blocks=blocks, layers=layers)
+                           dilation_channels=nhid, skip_channels=nhid * 4, end_channels=nhid * 8, kernel_size=kernel,
+                           blocks=blocks, layers=layers)
         #skip and end were 8 and 16 respectively
         self.model.to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lrate, weight_decay=wdecay)
@@ -34,8 +37,8 @@ class trainer():
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
         self.optimizer.step()
         if self.scale_y:
-            real = self.scaler.inverse_transform(real)
-            predict = self.scaler.inverse_transform(output.detach())
+            real = self.scaler.inverse_transform(real.cpu())
+            predict = self.scaler.inverse_transform(output.detach().cpu())
             metrics = util.metric(predict,real)
         else:
             metrics = util.metric(predict,real)
@@ -52,9 +55,10 @@ class trainer():
         predict = output
         loss = self.loss(predict, real)
         if self.scale_y:
-        #    real = self.scaler.inverse_transform(real)
-            predict = self.scaler.inverse_transform(output.detach())
-            metrics = util.metric(predict,real)
+            #real = real.to(type=torch.float64)
+            #real = self.scaler.inverse_transform(real)
+            predict = self.scaler.inverse_transform(output.detach().cpu()).float()
+            metrics = util.metric(predict,real.cpu())
         else:
             metrics = util.metric(predict,real)
         return metrics

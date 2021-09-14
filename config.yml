@@ -13,9 +13,9 @@ clean_prepped: False
 ## seg_ccov (cloud cover), seg_humid (humidity), seg_outlflow (streamflow out), seg_rain (rainfall), seg_shade (shade_fraction),
 ## seg_tave_air (air temp), seg_tave_gw (gw temp), seg_tave_sroff (surface runoff temp), seg_tave_upstream (upstream temp), seg_tave_water (water temp),
 ## seg_upstream_inflow, seg_width, seg_inc_gwflow (groundwater flow), seg_potet (potential ET), seg_sroff (surface runoff), seg_ssflow
-## (interflow), seginc_sward (solar radiation), seg_length (length of segment), seg_slope, seg_elev, seg
+## (interflow), seginc_sward (solar radiation), seg_length (length of segment), seg_slope, seg_elev, "seg_shade"
 
-x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_shade", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
+x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
 y_vars: ['seg_tave_water']
 primary_variable: 'temp'
 

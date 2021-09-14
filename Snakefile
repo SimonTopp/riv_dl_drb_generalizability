@@ -2,6 +2,7 @@ configfile: "config.yml"
 from gwn.generate_training_data_drb import prep_data
 from gwn.test_drb import plot_results
 from gwn.train_drb import train
+from gwn.predict import predict
 
 rule all:
     input:
@@ -54,8 +55,8 @@ rule train:
     output:
         config['out_dir'] + "/{seq_length}_{offset}/adjmat_out.csv",
         config['out_dir'] + "/{seq_length}_{offset}/adjmat_pre_out.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/test_results.csv",
         config['out_dir'] + "/{seq_length}_{offset}/train_log.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/weights_final.pth",
 
     run:
         train(input[0],
@@ -64,6 +65,25 @@ rule train:
             batch_size=config['batch_size'],
             epochs=config['epochs'],
             epochs_pre=config['epochs_pre'],
+            expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
+            kernel_size=config['kernel_size'],
+            layer_size=config['layer_size'],
+            clean_prepped=config['clean_prepped'],
+            scale_y=config['scale_y'],
+            learning_rate=config['learning_rate']
+            )
+
+rule predict:
+    input:
+        config['out_dir'] + "/{seq_length}_{offset}/prepped.npz",
+        config['out_dir'] + "/{seq_length}_{offset}/weights_final.pth",
+    output:
+        config['out_dir'] + "/{seq_length}_{offset}/test_results.csv",
+    run:
+        predict(input[0],
+            config['adjdata'],
+            config['out_dir'],
+            batch_size=config['batch_size'],
             expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
             kernel_size=config['kernel_size'],
             layer_size=config['layer_size'],

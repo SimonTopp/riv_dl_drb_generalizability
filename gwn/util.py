@@ -6,7 +6,7 @@ import torch
 from scipy.sparse import linalg
 import torch.nn as nn
 import torch.optim as optim
-
+from gwn.model import  *
 
 class DataLoader(object):
     def __init__(self, xs, ys, batch_size, pad_with_last_sample=True):
@@ -62,7 +62,7 @@ class StandardScaler():
         return (data - self.mean) / self.std
 
     def inverse_transform(self, data):
-        return (data * self.std) + self.mean
+        return (data.cpu() * self.std) + self.mean
 
 
 def load_pickle(pickle_file):
@@ -77,27 +77,10 @@ def load_pickle(pickle_file):
         raise
     return pickle_data
 
+
 def load_adj(pkl_filename, adjtype):
     sensor_ids, sensor_id_to_ind, adj = load_pickle(pkl_filename)
-    '''
-    if adjtype == "scalap":
-        adj = [calculate_scaled_laplacian(adj_mx)]
-    elif adjtype == "normlap":
-        adj = [calculate_normalized_laplacian(adj_mx).astype(np.float32).todense()]
-    elif adjtype == "symnadj":
-        adj = [sym_adj(adj_mx)]
-    elif adjtype == "transition":
-        adj = [asym_adj(adj_mx)]
-    elif adjtype == "doubletransition":
-        adj = [asym_adj(adj_mx), asym_adj(np.transpose(adj_mx))]
-    elif adjtype == "identity":
-        adj = [np.diag(np.ones(adj_mx.shape[0])).astype(np.float32)]
-    else:
-        error = 0
-        assert error, "adj type not defined"
-    '''
     return sensor_ids, sensor_id_to_ind, adj
-
 
 def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=None):
     if isinstance(cat_data,str):
@@ -139,7 +122,7 @@ def mae(y_pred, y_true):
     num_y_true = torch.count_nonzero(~torch.isnan(y_true))
     if num_y_true > 0:
         zero_or_error = torch.where(
-            torch.isnan(y_true), torch.zeros_like(y_true), y_pred - y_true
+            torch.isnan(y_true), torch.zeros_like(y_true), (y_pred - y_true)
         )
         sum_errors = torch.sum(torch.abs(zero_or_error))
         mae_loss = sum_errors/num_y_true
@@ -168,9 +151,9 @@ def metric(pred, real):
 
 class UQ_Net_std(nn.Module):
 
-    def __init__(self):
+    def __init__(self,len_x):
         super(UQ_Net_std, self).__init__()
-        self.fc1 = nn.Linear(10, 200)
+        self.fc1 = nn.Linear(len_x, 200)
         self.fc2 = nn.Linear(200, 1)
         self.fc2.bias = torch.nn.Parameter(torch.tensor([10.0]))
 
@@ -186,7 +169,6 @@ class UQ_Net_std(nn.Module):
         loss = torch.mean((output[:,0] - ydata[:,0])**2)
 
         return loss
-
 
 def calc_uq(xtrain,
             ytrain,
@@ -224,7 +206,7 @@ def calc_uq(xtrain,
     y_down_data = -1.0 * diff[diff < 0].unsqueeze(1)
     x_down_data = xtrain[diff.flatten() < 0] #.unsqueeze(1)
 
-    net_up = UQ_Net_std().to(device)
+    net_up = UQ_Net_std(len_x).to(device)
     net_up.zero_grad()
     optimizer = optim.SGD(net_up.parameters(), lr=0.01)
     Max_iter = 4000
@@ -244,7 +226,7 @@ def calc_uq(xtrain,
         loss.backward()
         optimizer.step()
 
-    net_down = UQ_Net_std().to(device)
+    net_down = UQ_Net_std(len_x).to(device)
     net_down.zero_grad()
     optimizer = optim.SGD(net_down.parameters(), lr=0.01)
 
@@ -324,14 +306,113 @@ def calc_uq(xtrain,
     c_down = c_down2
 
     x_test = torch.Tensor(x_test).to(device)
-    y_up = net_up(x_test).detach().numpy()#.squeeze()
-    y_down = net_down(x_test).detach().numpy()#.squeeze()
+    y_up = net_up(x_test).detach().cpu().numpy()#.squeeze()
+    y_down = net_down(x_test).detach().cpu().numpy()#.squeeze()
 
     if scale_y:
-        ci_low = scalar.inverse_transform(y_pred_test - c_down * y_down)
-        ci_high = scalar.inverse_transform(y_pred_test + c_up * y_up)
+        ci_low = scalar.inverse_transform(y_pred_test.cpu() - c_down * y_down)
+        ci_high = scalar.inverse_transform(y_pred_test.cpu() + c_up * y_up)
     else:
         ci_low = y_pred_test - c_down * y_down
         ci_high = y_pred_test + c_up * y_up
 
     return ci_low, ci_high
+
+
+def load_model(data_in,
+               adj_data,
+               out_dir,
+               batch_size=20,
+               kernel_size=3,
+               layer_size=3,
+               learning_rate=0.001,
+               randomadj=False,
+               n_blocks=4,
+               scale_y=False,
+               load_weights=False):
+
+    data = np.load(data_in)
+    out_dim = data['y_train'].shape[1]
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    _, _, adj_mx = load_pickle(adj_data)
+    dataloader = load_dataset(data, batch_size, batch_size, batch_size)
+    scaler = dataloader['scaler']
+
+    supports = [torch.tensor(adj_mx).to(device).float()]
+    in_dim = len(data['x_cols'])
+    num_nodes = adj_mx.shape[0]
+
+    if randomadj:
+        adjinit = None
+    else:
+        adjinit = supports[0]
+
+    engine = trainer(scaler, in_dim, num_nodes, learning_rate, device, supports,
+                     adjinit, out_dim, kernel_size, n_blocks, layer_size, scale_y)
+
+    if load_weights:
+        engine.model.load_state_dict(torch.load(out_dir + "/weights_final.pth"))
+
+    return data, dataloader, engine
+
+
+class trainer():
+    def __init__(self, scaler, in_dim, num_nodes, lrate, device, supports, aptinit, out_dim, kernel,
+                 blocks, layers, scale_y, nhid=32, wdecay=0.0001, dropout=0.3, gcn_bool=True, addaptadj=True):
+        self.model = gwnet(device, num_nodes, dropout, supports=supports, gcn_bool=gcn_bool, addaptadj=addaptadj,
+                           aptinit=aptinit, in_dim=in_dim, out_dim=out_dim, residual_channels=nhid,
+                           dilation_channels=nhid, skip_channels=nhid * 4, end_channels=nhid * 8, kernel_size=kernel,
+                           blocks=blocks, layers=layers)
+        #skip and end were 8 and 16 respectively
+        self.model.to(device)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=lrate, weight_decay=wdecay)
+        self.loss = rmse #was mae
+        self.scaler = scaler
+        self.clip = 5
+        self.scale_y = scale_y
+
+    def train(self, input, real_val):
+        self.model.train()
+        self.optimizer.zero_grad()
+        input = nn.functional.pad(input,(1,0,0,0))
+        #input = self.scaler.transform(input)
+        output = self.model(input)
+        output = output.transpose(1,3)
+        #output = [batch_size,12,num_nodes,1]
+        real = torch.unsqueeze(real_val,dim=1)
+        predict = output
+
+        assert real.shape == predict.shape, "Output dims not right, increase kernel or layer size"
+
+        loss = self.loss(predict, real)
+        loss.backward()
+        if self.clip is not None:
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
+        self.optimizer.step()
+        if self.scale_y:
+            real = self.scaler.inverse_transform(real.cpu())
+            predict = self.scaler.inverse_transform(output.detach().cpu())
+            metrics = metric(predict,real)
+        else:
+            metrics = metric(predict,real)
+        return metrics
+
+    def eval(self, input, real_val):
+        self.model.eval()
+        input = nn.functional.pad(input,(1,0,0,0))
+        #input = self.scaler.transform(input)
+        output = self.model(input)
+        output = output.transpose(1,3)
+        #output = [batch_size,12,num_nodes,1]
+        real = torch.unsqueeze(real_val,dim=1)
+        predict = output
+        loss = self.loss(predict, real)
+        if self.scale_y:
+            #real = real.to(type=torch.float64)
+            #real = self.scaler.inverse_transform(real)
+            predict = self.scaler.inverse_transform(output.detach().cpu()).float()
+            metrics = metric(predict,real.cpu())
+        else:
+            metrics = metric(predict,real)
+        return metrics
