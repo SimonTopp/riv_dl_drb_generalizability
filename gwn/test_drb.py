@@ -16,18 +16,19 @@ def plot_ts(out_dir):
     viridis = cm.get_cmap('viridis')
     test_df = pd.read_csv(os.path.join(out_dir, 'test_results.csv'))
     test_df['date'] = pd.to_datetime(test_df['date'])
-    test_df = test_df.set_index('date').loc['2011-10-01':'2019-09-30']
+    test_df = test_df.set_index('date').loc['2011-10-15':'2019-09-15']
     counts = test_df.dropna().groupby('seg_id_nat').size()
     filt = counts[counts > 1000].index.tolist()[:4]
     test_df_filt = test_df[test_df.seg_id_nat.isin(filt)].reset_index()
+    test_df_filt= test_df_filt.drop_duplicates(subset=['date','seg_id_nat'])
     test_df_filt['ci_low'] = np.where(test_df_filt['ci_low'] < 0,0,test_df_filt['ci_low'])
     fg = sns.FacetGrid(data=test_df_filt, row='seg_id_nat', aspect=3, sharex=False, sharey=False)
     fg.map(plt.scatter, 'date', 'temp_ob', alpha=.2, s=2, label='Observed', color=viridis(.3))
     fg.map(plt.scatter, 'date', 'temp_pred', alpha=.2, s=2, label='Predicted', color=viridis(.8))
     fg.map(plt.fill_between, 'date', 'ci_low', 'ci_high',
            alpha=0.4,
-           edgecolor=None,
-           color='#d3d3d3',
+           #edgecolor=None,
+           color='#a9a9a9',
            linewidth=0,
            zorder=1,
            label="Uncertainty")

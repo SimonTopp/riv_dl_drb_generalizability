@@ -8,8 +8,12 @@ import torch.nn as nn
 import torch.optim as optim
 from gwn.model import  *
 
+
+###########
+#Training Utilities
+###########
 class DataLoader(object):
-    def __init__(self, xs, ys, batch_size, pad_with_last_sample=True):
+    def __init__(self, xs, ys, batch_size, pad_with_last_sample=False):
         """
         :param xs:
         :param ys:
@@ -65,23 +69,6 @@ class StandardScaler():
         return (data.cpu() * self.std) + self.mean
 
 
-def load_pickle(pickle_file):
-    try:
-        with open(pickle_file, 'rb') as f:
-            pickle_data = pickle.load(f)
-    except UnicodeDecodeError as e:
-        with open(pickle_file, 'rb') as f:
-            pickle_data = pickle.load(f, encoding='latin1')
-    except Exception as e:
-        print('Unable to load data ', pickle_file, ':', e)
-        raise
-    return pickle_data
-
-
-def load_adj(pkl_filename, adjtype):
-    sensor_ids, sensor_id_to_ind, adj = load_pickle(pkl_filename)
-    return sensor_ids, sensor_id_to_ind, adj
-
 def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=None):
     if isinstance(cat_data,str):
         cat_data = np.load(os.path.join(cat_data, 'prepped.npz'))
@@ -103,6 +90,28 @@ def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=N
     data['test_loader'] = DataLoader(data['x_test'], data['y_test'], test_batch_size)
     data['scaler'] = scaler
     return data
+
+
+def load_pickle(pickle_file):
+    try:
+        with open(pickle_file, 'rb') as f:
+            pickle_data = pickle.load(f)
+    except UnicodeDecodeError as e:
+        with open(pickle_file, 'rb') as f:
+            pickle_data = pickle.load(f, encoding='latin1')
+    except Exception as e:
+        print('Unable to load data ', pickle_file, ':', e)
+        raise
+    return pickle_data
+
+def load_adj(pkl_filename):
+    sensor_ids, sensor_id_to_ind, adj = load_pickle(pkl_filename)
+    return sensor_ids, sensor_id_to_ind, adj
+
+
+##############
+### Error Metrics
+#############
 
 
 def rmse(y_pred, y_true):
@@ -130,24 +139,15 @@ def mae(y_pred, y_true):
         mae_loss = 0.0
     return mae_loss
 
-def mape(y_pred, y_true):
-    num_y_true = torch.count_nonzero(~torch.isnan(y_true))
-    if num_y_true > 0:
-        zero_or_error = torch.where(
-            torch.isnan(y_true), torch.zeros_like(y_true), torch.abs((y_pred-y_true)/(y_true + 1E-5))
-        )
-        mape_loss = torch.sum(zero_or_error)/num_y_true
-    else:
-        mape_loss = 0.0
-    return mape_loss
 
 def metric(pred, real):
     masked_mae = mae(pred,real).item()
-    masked_mape = mape(pred,real).item()
     masked_rmse = rmse(pred,real).item()
-    return masked_mae,masked_mape,masked_rmse
+    return masked_mae,masked_rmse
 
-## UQ Utilities following Lu et al (in review)
+##############
+#### UQ Utilities following Lu et al (in review)
+##############
 
 class UQ_Net_std(nn.Module):
 
@@ -180,21 +180,22 @@ def calc_uq(xtrain,
             quantile=0.90):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    ##Flatten everythign
     len_x=xtrain.shape[3]
 
-    x_test = x_test.swapaxes(1,2).reshape(-1,len_x)
+    ###### Flatten everything for training
+    x_test = x_test.reshape(-1,len_x)
+    x_test=torch.Tensor(x_test).to(device)
     y_pred_test=y_pred_test.reshape(-1,1)
     y_pred_train=y_pred_train.reshape(-1,1)
-    xtrain = xtrain.swapaxes(1,2).reshape(-1,len_x)
-    ytrain= ytrain.swapaxes(1,2).reshape(-1,1)
+    xtrain = xtrain.reshape(-1,len_x)
+    xtrain = torch.Tensor(xtrain).to(device)
+    ytrain= ytrain.reshape(-1,1)
+    ytrain=torch.Tensor(ytrain).to(device)
 
-    mask = np.isfinite(ytrain).flatten()
+    mask = torch.isfinite(ytrain).flatten()
     xtrain=xtrain[mask,...]
     ytrain=ytrain[mask,...]
-    ytrain=torch.Tensor(ytrain).to(device)
     y_pred_train=y_pred_train[mask,...]
-    xtrain=torch.Tensor(xtrain).to(device)
 
     criterion = nn.MSELoss()
     # Generate difference data
@@ -305,6 +306,8 @@ def calc_uq(xtrain,
         print('{}, f0: {}, f1: {}, f2: {}'.format(iter, f0, f1, f2))
     c_down = c_down2
 
+    net_up.eval()
+    net_down.eval()
     x_test = torch.Tensor(x_test).to(device)
     y_up = net_up(x_test).detach().cpu().numpy()#.squeeze()
     y_down = net_down(x_test).detach().cpu().numpy()#.squeeze()
