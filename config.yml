@@ -19,15 +19,15 @@ x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", 
 y_vars: ['seg_tave_water']
 primary_variable: 'temp'
 
-seq_length: [100]
+seq_length: [365]
 # out_dim: 60
-batch_size: 10
+batch_size: 3
 epochs: 5
-epochs_pre: 0
+epochs_pre: 1
 kernel_size: 8
 layer_size: 4
 learning_rate: 0.001
-offset: [.75]
+offset: [1]
 scale_y: True
 
 train_start_date:
