@@ -181,6 +181,7 @@ def calc_uq(xtrain,
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     len_x=xtrain.shape[3]
+    #print("training on " + device)
 
     ###### Flatten everything for training
     x_test = x_test.reshape(-1,len_x)
@@ -308,7 +309,8 @@ def calc_uq(xtrain,
 
     net_up.eval()
     net_down.eval()
-    x_test = torch.Tensor(x_test).to(device)
+    #x_test = torch.Tensor(x_test).to(device)
+
     y_up = net_up(x_test).detach().cpu().numpy()#.squeeze()
     y_down = net_down(x_test).detach().cpu().numpy()#.squeeze()
 

@@ -43,6 +43,8 @@ def predict(data_in,
     engine.model.eval()
     for i in idx:
         x = torch.Tensor(train_x[i:i+batch_size,...]).to(device)
+        if x.shape[0]==0:
+            break
         x = x.transpose(1,3)
         with torch.no_grad():
             preds=engine.model(x)#.transpose(1,3)
@@ -55,11 +57,14 @@ def predict(data_in,
     idx = np.arange(0, len(test_y) + 1, step=batch_size)
     for i in idx:
         x = torch.Tensor(test_x[i:i + batch_size, ...]).to(device)
+        if x.shape[0]==0:
+            break
         x = x.transpose(1, 3)
         with torch.no_grad():
             preds = engine.model(x)#.transpose(1, 3)
         outputs.append(preds)
     preds_test = torch.cat(outputs, dim=0).squeeze()
+    print('Done with Predictions')
 
 
     ##Calculate UQ bounds
