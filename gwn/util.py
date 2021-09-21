@@ -325,7 +325,6 @@ def calc_uq(xtrain,
 
 
 def load_model(data_in,
-               adj_data,
                out_dir,
                batch_size=20,
                kernel_size=3,
@@ -340,7 +339,7 @@ def load_model(data_in,
     out_dim = data['y_train'].shape[1]
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    _, _, adj_mx = load_pickle(adj_data)
+    adj_mx = data['dist_matrix']
     dataloader = load_dataset(data, batch_size, batch_size, batch_size)
     scaler = dataloader['scaler']
 

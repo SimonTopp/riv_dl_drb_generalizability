@@ -5,7 +5,6 @@ import pandas as pd
 import gwn.util as util
 
 def predict(data_in,
-          adj_data,
           out_dir,
           batch_size=20,
           expid='default',
@@ -21,7 +20,6 @@ def predict(data_in,
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     data, dataloader, engine = util.load_model(data_in,
-                                               adj_data,
                                                out_dir,
                                                batch_size,
                                                kernel_size=kernel_size,

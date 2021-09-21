@@ -28,7 +28,6 @@ rule prep_io_data:
          config['obs_temp'],
          config['obs_flow'],
          config['sntemp_file'],
-        # config['dist_matrix'],
     output:
         config['out_dir']+"/{seq_length}_{offset}/prepped.npz",
     run:
@@ -45,13 +44,15 @@ rule prep_io_data:
             seq_length= int(wildcards.seq_length), #config['seq_length'],
             offset= float(wildcards.offset), #config['offset'],
             out_file= output[0], #out_dir + "/prepped.npz",
-            normalize_y=config['scale_y']
+            normalize_y=config['scale_y'],
+            distfile=config['dist_file'],
+            dist_idx_name="rowcolnames",
+            dist_type=config['dist_type'],
         )
 
 rule train:
     input:
         config['out_dir'] + "/{seq_length}_{offset}/prepped.npz",
-        adjdata= config['adjdata'],
     output:
         config['out_dir'] + "/{seq_length}_{offset}/adjmat_out.csv",
         config['out_dir'] + "/{seq_length}_{offset}/adjmat_pre_out.csv",
@@ -60,7 +61,6 @@ rule train:
 
     run:
         train(input[0],
-            input[1],
             config['out_dir'],
             batch_size=config['batch_size'],
             epochs=config['epochs'],
@@ -81,7 +81,6 @@ rule predict:
         config['out_dir'] + "/{seq_length}_{offset}/test_results.csv",
     run:
         predict(input[0],
-            config['adjdata'],
             config['out_dir'],
             batch_size=config['batch_size'],
             expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),

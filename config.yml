@@ -1,8 +1,9 @@
 # Input files
-obs_flow: "data/in/obs_flow_subset"
-obs_temp: "data/in/obs_temp_subset"
-sntemp_file: "data/in/uncal_sntemp_input_output_subset"
-adjdata: 'data/in/adj_mat/adj_mx_subset.pkl'
+obs_flow: "../river-dl/data_DRB/flow_observations_drb_Christiana_no3558"
+obs_temp: "../river-dl/data_DRB/temperature_observations_drb_Christiana_no3558"
+sntemp_file: "../river-dl/data_DRB/sntemp_inputs_outputs_drb_Christiana_no3558"
+dist_file: '../river-dl/data_DRB/distance_matrix_drb_Christiana_no3558.npz'
+dist_type: 'updown'
 
 out_dir: 'data/out'
 expid: '365_test'
@@ -17,6 +18,7 @@ clean_prepped: False
 
 x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
 y_vars: ['seg_tave_water']
+
 primary_variable: 'temp'
 
 seq_length: [365]

@@ -11,7 +11,6 @@ import gwn.util as util
 import pickle
 
 def train(data_in,
-          adj_data,
           out_dir,
           batch_size=20,
           epochs=50,
@@ -34,7 +33,6 @@ def train(data_in,
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     data, dataloader, engine = util.load_model(data_in,
-               adj_data,
                out_dir,
                batch_size,
                kernel_size=kernel_size,
@@ -85,7 +83,7 @@ def train(data_in,
     adp = torch.nn.functional.softmax(torch.nn.functional.relu(torch.mm(engine.model.nodevec1, engine.model.nodevec2)), dim=1)
     #adp.to(torch.device('cpu'))
     adp = adp.cpu().detach().numpy()
-    adp = adp*(1/np.max(adp))
+    #adp = adp*(1/np.max(adp))
     df = pd.DataFrame(adp)
     df.to_csv(os.path.join(out_dir,'adjmat_pre_out.csv'), index=False)
     #print("Average Inference Time: {:.4f} secs".format(np.mean(val_time)))
@@ -164,7 +162,7 @@ def train(data_in,
     adp = torch.nn.functional.softmax(torch.nn.functional.relu(torch.mm(engine.model.nodevec1, engine.model.nodevec2)), dim=1)
     adp.to(torch.device('cpu'))
     adp = adp.cpu().detach().numpy()
-    adp = adp*(1/np.max(adp))
+    #adp = adp*(1/np.max(adp))
     df = pd.DataFrame(adp)
     df.to_csv(os.path.join(out_dir,'adjmat_out.csv'), index=False)
 

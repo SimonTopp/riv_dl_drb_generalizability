@@ -249,7 +249,6 @@ def prep_data(
     obs_temper_file,
     obs_flow_file,
     pretrain_file,
-    #distfile,
     train_start_date,
     train_end_date,
     val_start_date,
@@ -260,6 +259,9 @@ def prep_data(
     y_vars= ["seg_tave_water", "seg_outflow"],
     seq_length = 365,
     offset = 1,
+    distfile=None,
+    dist_idx_name="rowcolnames",
+    dist_type="updown",
     primary_variable="temp",
     #catch_prop_file=None,
     #exclude_file=None,
@@ -391,6 +393,14 @@ def prep_data(
         "y_mean": y_mean.to_array().values,
         }
 
+    if distfile:
+        data["dist_matrix"] = prep_adj_matrix(
+            infile=distfile,
+            dist_type=dist_type,
+            dist_idx_name=dist_idx_name,
+            #segs=segs,
+        )
+
     if out_file:
         if not os.path.exists(os.path.split(out_file)[0]):
             os.makedirs(os.path.split(out_file)[0])
@@ -399,20 +409,38 @@ def prep_data(
     return data
 
 
-def prep_adj_matrix(infile, dist_type, out_file=None):
+def sort_dist_matrix(mat, row_col_names, segs=None):
+    """
+    sort the distance matrix by id
+    :return:
+    """
+    if segs is not None:
+        row_col_names = row_col_names.astype(type(segs[0]))
+    df = pd.DataFrame(mat, columns=row_col_names, index=row_col_names)
+    if segs:
+        df = df[segs]
+        df = df.loc[segs]
+    df = df.sort_index(axis=0)
+    df = df.sort_index(axis=1)
+    return df
+
+
+def prep_adj_matrix(infile, dist_type, dist_idx_name, segs=None, out_file=None):
     """
     process adj matrix.
-    **The resulting matrix is sorted by seg_id_nat **
-    :param infile:
+    **The resulting matrix is sorted by id **
+    :param infile: [str] path to the distance matrix .npz file
     :param dist_type: [str] type of distance matrix ("upstream", "downstream" or
     "updown")
-    :param out_file:
+    :param dist_idx_name: [str] name of index to sort dist_matrix by. This is
+    the name of an array in the distance matrix .npz file
+    :param segs: [list-like] which segments to prepare the data for
+    :param out_file: [str] path to save the .npz file to
     :return: [numpy array] processed adjacency matrix
     """
     adj_matrices = np.load(infile)
     adj = adj_matrices[dist_type]
-    adj_full = sort_dist_matrix(adj, adj_matrices["rowcolnames"])
-    adj = adj_full[2]
+    adj = sort_dist_matrix(adj, adj_matrices[dist_idx_name], segs=segs)
     adj = np.where(np.isinf(adj), 0, adj)
     adj = -adj
     mean_adj = np.mean(adj[adj != 0])
@@ -428,46 +456,5 @@ def prep_adj_matrix(infile, dist_type, out_file=None):
     D_inv = np.diag(D_inv)
     A_hat = np.matmul(D_inv, A_hat)
     if out_file:
-        out_dm = [adj_full[0], adj_full[1], A_hat]
-        with open(out_file, 'wb') as f:
-            pickle.dump(out_dm, f, protocol=2)
-
-    return adj_full[0], adj_full[1], A_hat
-
-
-def sort_dist_matrix(mat, row_col_names):
-    """
-    sort the distance matrix by seg_id_nat
-    :return:
-    """
-    df = pd.DataFrame(mat, columns=row_col_names, index=row_col_names)
-    df = df.sort_index(axis=0)
-    df = df.sort_index(axis=1)
-    sensor_id_to_ind = {}
-    for i, sensor_id in enumerate(df.columns):
-        sensor_id_to_ind[sensor_id] = i
-
-    return row_col_names, sensor_id_to_ind, df
-
-##check = prep_adj_matrix('data_DRB/distance_matrix_subset.npz', 'upstream', 'data/adj_mat/adj_mx_subset.pkl')
-#if __name__ == "__main__":
-'''
-check2 = prep_data(obs_temper_file='data/obs_temp_full',
-    obs_flow_file='data/obs_flow_full',
-    pretrain_file='data/uncal_sntemp_input_output',
-    train_start_date=['1985-10-01', '2016-10-01'],
-    train_end_date=['2006-09-30', '2020-09-30'],
-    val_start_date='2006-10-01',
-    val_end_date='2016-09-30',
-    test_start_date=['1980-10-01', '2020-10-01'],
-    test_end_date=['1985-09-30', '2021-09-30'],
-    x_vars=["seg_rain", "seg_tave_air", "seginc_swrad", "seg_length", "seginc_potet", "seg_slope", "seg_humid",
-          "seg_elev"],
-    y_vars=['seg_tave_water'],
-    primary_variable='temp',
-    seq_length=60,
-    period=15,
-    offset=1,
-    out_file = 'data/test')
-
-'''
+        np.savez_compressed(out_file, dist_matrix=A_hat)
+    return A_hat
