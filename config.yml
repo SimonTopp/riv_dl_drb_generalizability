@@ -31,6 +31,7 @@ layer_size: 4
 learning_rate: 0.001
 offset: [1]
 scale_y: True
+ci_quant: 0.9
 
 train_start_date:
   - '1985-10-01'

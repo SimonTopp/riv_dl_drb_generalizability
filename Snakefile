@@ -88,7 +88,8 @@ rule predict:
             layer_size=config['layer_size'],
             clean_prepped=config['clean_prepped'],
             scale_y=config['scale_y'],
-            learning_rate=config['learning_rate']
+            learning_rate=config['learning_rate'],
+            quantile=config['ci_quant']
             )
 
 rule viz:

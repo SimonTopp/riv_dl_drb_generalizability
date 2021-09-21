@@ -14,7 +14,8 @@ def predict(data_in,
           randomadj=False,
           n_blocks=4,
           scale_y=False,
-          clean_prepped=True):
+          clean_prepped=True,
+          quantile=0.9):
 
     out_dir = out_dir+'/'+expid
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -73,7 +74,7 @@ def predict(data_in,
                                    preds_test,                      #y_pred_test,
                                    scaler,
                                    scale_y=True,
-                                   quantile=0.90)
+                                   quantile=quantile)
 
     if scale_y:
         yhat = scaler.inverse_transform(preds_test)
