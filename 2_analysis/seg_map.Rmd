@@ -1,0 +1,104 @@
+---
+title: "SegS_map"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(mapview)
+library(sf)
+library(dataRetrieval)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo = F}
+temp_obs <- read_csv('../data/in/temperature_observations_drb.csv') %>% filter(date > '1985-01-01')
+res_info <- readRDS('../data/in/DRB_spatial/segments_relative_to_reservoirs.rds')
+
+spatial <- readRDS('../data/in/DRB_spatial/network.rds')
+edges <- spatial$edges %>% st_as_sf()
+
+temp_grouped <- temp_obs %>%
+  group_by(seg_id_nat, site_id) %>%
+  summarise(count = n()) %>%
+  group_by(seg_id_nat) %>%
+  summarise(count_sites = n(),
+            mean_obs_per_site = mean(count),
+            median_obs_per_site = median(count),
+            sd_obs_per_site = sd(count)) %>%
+  left_join(res_info) %>%
+  left_join(edges %>% st_set_geometry(NULL) %>% select(seg_id_nat, subseg_length)) %>%
+  filter(!is.na(seg_id_nat))
+
+
+# ggplot(temp_grouped, aes(x=count_sites, fill = median_obs_per_site)) +
+#   geom_histogram() + 
+#   theme_bw() + 
+#   facet_wrap(~type_res, scales='free')
+
+
+ggplot(temp_grouped, aes(x=type_res, y=count_sites,)) +
+  geom_violin() +
+  geom_jitter(aes(color = median_obs_per_site), width=0.15, height=0.05, alpha=0.7, size=0.75) +
+  scale_color_viridis_c(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  theme_bw() +
+  labs(x= 'Reach Type', y= 'Unique Sites Per Reach', color = 'Median Obs Per Site') +
+  theme(axis.text.x = element_text(angle=45, vjust=1,hjust=1))
+
+
+temp_g_filt <- temp_grouped %>% filter(type_res %in% c("reservoir_inlet_reach", "downstream of reservoir (1)", "reservoir_outlet_reach", "downstream of reservoir (2)", "contains_reservoir" ))
+  
+ggplot(temp_g_filt, aes(x=type_res, y=count_sites)) +
+  geom_violin() +
+  geom_jitter(aes(color = median_obs_per_site), width=0.15, height=0.05, alpha=0.7, size=0.75) +
+  scale_color_viridis_c(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  theme_bw() +
+  labs(x= 'Reach Type', y= 'Unique Sites Per Reach', color = 'Median Obs Per Site') +
+  theme(axis.text.x = element_text(angle=45, vjust=1,hjust=1))
+
+ggplot(temp_g_filt, aes(x=type_res, y=count_sites)) +
+  geom_violin() +
+  geom_jitter(aes(color = as.double(subseg_length)), width=0.15, height=0.05, alpha=0.7, size=0.75) +
+  scale_color_viridis_c(trans='log10') +
+  scale_y_continuous(trans='log10') +
+  theme_bw() +
+  labs(x= 'Reach Type', y= 'Unique Sites Per Reach', color = 'Reach Length (m)') +
+  theme(axis.text.x = element_text(angle=45, vjust=1,hjust=1))
+
+sites <- temp_obs %>% filter(seg_id_nat %in% temp_g_filt$seg_id_nat) %>%
+  distinct(site_id, seg_id_nat)
+
+s1 <- sites %>% 
+  mutate(site = map_chr(site_id, ~str_split(., pattern=', ') %>% unlist() %>% .[1])) %>% na.omit()
+
+s2 <- sites %>% 
+  mutate(site = map_chr(site_id, ~str_split(., pattern=', ') %>% unlist() %>% .[2]))%>% na.omit()
+
+s3 <- sites %>% 
+  mutate(site = map_chr(site_id, ~str_split(., pattern=', ') %>% unlist() %>% .[3]))%>% na.omit()
+
+
+sites_flat <- s1 %>% bind_rows(s2 %>% bind_rows(s3))
+
+sites_sf <- whatWQPsites(siteid=sites_flat$site)
+
+sites_sf <- sites_sf %>%
+  select(site_id = MonitoringLocationIdentifier, lat = LatitudeMeasure, long = LongitudeMeasure) %>%
+  st_as_sf(coords =c('long','lat'), crs=4326) %>%
+  left_join(sites_flat %>% select(site_id = site, seg_id_nat)) %>%
+  mutate(seg_id_nat=factor(seg_id_nat))
+
+mapview::mapview(sites_sf,zcol='seg_id_nat') + mapview::mapview(edges, zcol = NULL)
+
+temp_obs %>% filter(seg_id_nat == 1638) %>%
+  ggplot(aes(x=date, y= mean_temp_c)) +
+  geom_point() +
+  theme_bw()
+
+
+```
+
