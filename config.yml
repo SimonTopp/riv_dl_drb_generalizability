@@ -1,12 +1,11 @@
 # Input files
-obs_flow: "../river-dl/data_DRB/flow_observations_drb_Christiana_no3558"
-obs_temp: "../river-dl/data_DRB/temperature_observations_drb_Christiana_no3558"
-sntemp_file: "../river-dl/data_DRB/sntemp_inputs_outputs_drb_Christiana_no3558"
-dist_file: '../river-dl/data_DRB/distance_matrix_drb_Christiana_no3558.npz'
+obs_flow: "data/in/flow_observations_drb_Christiana_no3558"
+obs_temp: "data/in/temperature_observations_drb_Christiana_no3558"
+sntemp_file: "data/in/sntemp_inputs_outputs_drb_Christiana_no3558"
+dist_file: 'data/in/distance_matrix_drb_Christiana_no3558.npz'
 dist_type: 'updown'
 
-out_dir: 'data/out'
-expid: '365_test'
+out_dir: 'data/out/off_test'
 code_dir: "gwn"
 clean_prepped: False
 
@@ -23,14 +22,15 @@ primary_variable: 'temp'
 
 seq_length: [365]
 # out_dim: 60
-batch_size: 3
-epochs: 5
+batch_size: 5
+epochs: 1
 epochs_pre: 1
-kernel_size: 8
-layer_size: 4
+kernel_size: 4
+layer_size: 5
 learning_rate: 0.001
-offset: [1]
+offset: [10]
 scale_y: True
+clip_y: False
 ci_quant: 0.9
 
 train_start_date:

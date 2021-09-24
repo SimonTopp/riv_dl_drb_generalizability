@@ -103,7 +103,10 @@ def split_into_batches(data_array, seq_len=365, offset=1):
     :return: [numpy array] batched data with dims [nbatches, nseg, seq_len
     (batch_size), nfeat]
     """
-    period = int(offset*seq_len)
+    if offset>1:
+        period = offset
+    else:
+        period = int(offset*seq_len)
     num_batches = int(data_array.shape[1]//period)
     combined=[]
     for i in range(num_batches+1):
@@ -224,6 +227,9 @@ def convert_batch_reshape(dataset, seq_len=365, offset=1, y = False):
     if y and offset<1:
         period = int(seq_len*offset)
         reshaped = reshaped[:,-period:,...]
+    elif y and offset > 1:
+        period=offset
+        reshaped = reshaped[:,-period:,...]
 
     return reshaped
 
@@ -269,6 +275,7 @@ def prep_data(
     out_file=None,
     #segs=None,
     normalize_y=False,
+    clip_y=True
 ):
     """
     prepare input and output data for DL model training read in and process
@@ -381,14 +388,14 @@ def prep_data(
         "dates_val": coord_as_reshaped_array(x_val, "date", offset=offset, seq_len=seq_length),
         "ids_test": coord_as_reshaped_array(x_tst, "seg_id_nat", offset=offset, seq_len=seq_length),
         "dates_test": coord_as_reshaped_array(x_tst, "date", offset=offset, seq_len=seq_length),
-        "y_pre_train": convert_batch_reshape(y_pre_trn, offset=offset, seq_len=seq_length, y=True),
-        "y_train": convert_batch_reshape(y_obs_trn, offset=offset, seq_len=seq_length, y=True),
-        "y_val": convert_batch_reshape(y_obs_val, offset=offset, seq_len=seq_length, y=True),
-        "y_test": convert_batch_reshape(y_obs_tst, offset=offset, seq_len=seq_length, y=True),
+        "y_pre_train": convert_batch_reshape(y_pre_trn, offset=offset, seq_len=seq_length, y=clip_y),
+        "y_train": convert_batch_reshape(y_obs_trn, offset=offset, seq_len=seq_length, y=clip_y),
+        "y_val": convert_batch_reshape(y_obs_val, offset=offset, seq_len=seq_length, y=clip_y),
+        "y_test": convert_batch_reshape(y_obs_tst, offset=offset, seq_len=seq_length, y=clip_y),
         "y_vars": np.array(y_vars),
         'offset': np.array([offset]),
-        'y_pre_train_val': convert_batch_reshape(y_pre_val, offset=offset, seq_len=seq_length, y=True),
-        'y_pre_train_test': convert_batch_reshape(y_pre_tst, offset=offset, seq_len=seq_length, y=True),
+        'y_pre_train_val': convert_batch_reshape(y_pre_val, offset=offset, seq_len=seq_length, y=clip_y),
+        'y_pre_train_test': convert_batch_reshape(y_pre_tst, offset=offset, seq_len=seq_length, y=clip_y),
         "y_std": y_std.to_array().values,
         "y_mean": y_mean.to_array().values,
         }

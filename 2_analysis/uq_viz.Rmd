@@ -433,6 +433,51 @@ p2 <- adj_full %>%
 
 gridExtra::grid.arrange(p1,p2,nrow=1)
 
+sntemp_summ <- sntemp %>% distinct(seg_id_nat, .keep_all = T)
+
+adj_full <- adj_full %>% left_join(sntemp_summ %>% mutate(seg_id_nat = factor(seg_id_nat)))
+
+adj_full %>%
+  filter(vector=='columns') %>%
+  select_if(is.numeric) %>%
+  select(adj_value = mean_dist, seg_length, seg_slope, seg_elev, count) %>%
+  cor(., use='complete.obs') %>%
+  corrplot::corrplot(., type = 'lower')
+
+ggplot(adj_full, aes(x=seg_slope, y =mean_dist)) +
+  geom_point() + 
+  facet_wrap(~vector)
+
+
+```
+## Sandbox zone
+
+```{r}
+results <- read_csv('../data/out/remote/off_test/100_0.1/test_results.csv') %>%
+  filter(!is.na(temp_ob))
+
+
+results <- results %>% group_by(date, seg_id_nat) %>%
+  mutate(ob_number = row_number()) %>%
+  ungroup()
+
+
+test_seg <- results %>% filter(seg_id_nat == 2013)
+
+
+hist(check$ob_number)
+
+results %>% filter(!is.na(temp_ob)) %>% group_by(ob_number) %>%
+  summarise(rmse = Metrics::rmse(temp_ob, temp_pred)) %>%
+  ggplot(aes(x=ob_number, y=rmse)) + geom_line()
+
+results %>% filter(!is.na(temp_ob)) %>%
+  summarise(rmse = Metrics::rmse(temp_ob, temp_pred))
+
 ```
 
+```{r}
+rm(check
+   )
+```
 

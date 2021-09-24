@@ -48,6 +48,7 @@ rule prep_io_data:
             distfile=config['dist_file'],
             dist_idx_name="rowcolnames",
             dist_type=config['dist_type'],
+            clip_y=config['clip_y']
         )
 
 rule train:
@@ -68,7 +69,6 @@ rule train:
             expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
             kernel_size=config['kernel_size'],
             layer_size=config['layer_size'],
-            clean_prepped=config['clean_prepped'],
             scale_y=config['scale_y'],
             learning_rate=config['learning_rate']
             )
