@@ -258,7 +258,77 @@ seg_char_dist(segs[5])
 ```{r}
 seg_atts <- read_feather('../data/in/DRB_spatial/combined_seg_attr_02.feather')
 
-res_info <- readRDS('../data/in/DRB_spatial/segments_relative_to_reservoirs.rds')
+res_info <- readRDS('../data/in/DRB_spatial/segments_relative_to_reservoirs.rds')  %>%
+  filter(seg_id_nat != 3558)
+
+f <- function(x,y) ifelse(x==1 & y==1, 1, (x-y)^2)
+
+sim_plotter <- function(i){
+  dist = res_info %>%
+    mutate(cat = ifelse(type_res %in% i, 1, 0))
+  m <- as.matrix(proxy::dist(dist$cat, f)) %>%
+    reshape2::melt(.)
+
+ggplot(m, aes(x = Var2, y = -Var1)) + 
+  geom_raster(aes(fill=value)) + 
+  scale_fill_viridis_c() +
+  theme_bw() +
+  ggtitle(i)
+  }
+
+
+ids <- unique(res_info$type_res)
+#map(ids[1:2], sim_plotter)
+
+adj <- read_csv('../data/out/off_test/60_10/adjmat_out.csv')
+#adj <- read_csv('../data/out/60_0.25_ud_dist/adjmat_out.csv')
+
+sim_plotter_masked <- function(i, adj){
+  dist = res_info %>%
+    mutate(cat = ifelse(type_res %in% i, 1, 0))
+  m <- as.matrix(proxy::dist(dist$cat, f))
+
+  p1 <- as.matrix(adj) %>% reshape2::melt(.) %>%
+    filter(Var1 <50, Var2 <50) %>%
+    ggplot(aes(x=Var2, y = Var1)) +
+    geom_raster(aes(fill = value)) +
+    scale_fill_viridis_c(option='magma') +
+    scale_y_reverse(breaks = round(seq(0, 455, by = 20),1)) +
+    theme_bw() +
+    scale_x_continuous(breaks = round(seq(0, 455, by = 20),1)) +
+    theme(legend.position = 'bottom', axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))  
+    
+  masked <- as.matrix(adj)
+  masked[m==0] <- NA
+
+  p2 <- masked %>% reshape2::melt(.) %>%
+  filter(Var1 <50, Var2 <50) %>%
+  ggplot(aes(x = Var2, y = Var1)) + 
+  geom_raster(aes(fill=value)) + 
+  scale_fill_viridis_c(option='magma') +
+  scale_y_reverse(breaks = round(seq(0, 455, by = 20),1)) +
+  theme_bw() +
+  scale_x_continuous(breaks = round(seq(0, 455, by = 20),1)) +
+  theme(legend.position = 'bottom', axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+  
+  gridExtra::grid.arrange(p1,p2, nrow=1, top = i)
+  }
+
+map(ids,~sim_plotter_masked(.,adj))
+
+```
+
+
+```{r}
+check <- as.matrix(dist(res_info$type_res)) #%*% res_info$type_res
+check2 <- check %>% reshape2::melt(.)
+
+ggplot(check2, aes(x = Var2, y = Var1)) + 
+  geom_raster(aes(fill=value)) + 
+  scale_fill_viridis_c() +
+  theme_bw() 
+
+res_matrix <- reshape2::dcast(res_info, type_res~type_res)
 
 # res_info %>% left_join(edges, by='seg_id_nat') %>%
 #   st_as_sf() %>%
@@ -452,32 +522,129 @@ ggplot(adj_full, aes(x=seg_slope, y =mean_dist)) +
 ```
 ## Sandbox zone
 
+
 ```{r}
-results <- read_csv('../data/out/remote/off_test/100_0.1/test_results.csv') %>%
-  filter(!is.na(temp_ob))
+### Let's just look at the 60 because it's more comparable in terms of number of training sequences
+results <- read_csv('../data/out/off_test/60_10/test_results.csv') %>%
+    group_by(date, seg_id_nat) %>%
+    mutate(ob_number = row_number()) %>% ungroup() %>%
+    group_by(ob_number) %>%
+    summarise(rmse = Metrics::rmse(temp_ob, temp_pred))
+
+end_preds <- run_summaries_overall %>% filter(run == '60_0.25_ud_dist')
+
+ggplot(results, aes(x=ob_number,y=rmse)) +
+  geom_line() +
+  geom_hline(aes(yintercept=end_preds$rmse[1]))
+```
 
 
-results <- results %>% group_by(date, seg_id_nat) %>%
-  mutate(ob_number = row_number()) %>%
-  ungroup()
 
 
-test_seg <- results %>% filter(seg_id_nat == 2013)
+```{r}
+files <- list.files('../data/out/off_test', full.names = T, recursive = T, pattern = 'test_results.csv')
 
+reader <- function(id){
+  df <- read_csv(grep(paste0(id,'/'), files, value = T), show_col_types = FALSE) %>% 
+    group_by(date, seg_id_nat) %>%
+    mutate(ob_number = row_number()) %>% ungroup() %>%
+    group_by(ob_number) %>%
+    summarise(rmse = Metrics::rmse(temp_ob, temp_pred)) %>%
+    mutate(run = id) 
+}
 
-hist(check$ob_number)
+runs <- c('60_10','100_10','365_10','200_10', '200_long')
 
-results %>% filter(!is.na(temp_ob)) %>% group_by(ob_number) %>%
-  summarise(rmse = Metrics::rmse(temp_ob, temp_pred)) %>%
-  ggplot(aes(x=ob_number, y=rmse)) + geom_line()
+og_renamed <- run_summaries_overall %>%
+  filter(run %in% c('60_0.25_ud_dist')) %>%
+  mutate(og=case_when(grepl('_0.1', run) ~ '0.1', grepl('_0.25',run)~'0.25',grepl('_1',run)~'1'),
+         run=case_when(grepl('100_',run)~'100_10',grepl('60_',run)~'60_10')) %>%
+  filter(!is.na(run))
+         
+rmse_by_ob_position <- runs %>% map_dfr(reader)
+
+rmse_by_ob_position %>%
+  group_by(run) %>%
+  mutate(ob_number = (max(ob_number)-ob_number)*10) %>%
+  ungroup() %>%
+  ggplot(aes(x=ob_number, y=rmse)) + geom_line() +
+  geom_hline(data=og_renamed, aes(yintercept=rmse, color=og)) +
+  labs(x = 'Observation location in sequence', color = 'Runs trained on\nend of seq preds') +
+  facet_wrap(~run, scales = 'free_x') +
+  theme_bw()
+
 
 results %>% filter(!is.na(temp_ob)) %>%
   summarise(rmse = Metrics::rmse(temp_ob, temp_pred))
+```
+
+
+
+```{r}
+reader <- function(id){
+  df <- read_csv(grep(paste0(id,'/'), files, value = T),show_col_types = FALSE) %>% mutate(run = id)
+}
+
+
+runs <- c('60_10','100_10','365_10','200_10','200_long')
+
+########### Train log
+files <- list.files('../data/out/off_test', full.names = T, recursive = T, pattern = 'train_log.csv')
+
+
+train_logs <- runs %>% map_dfr(reader)
+
+log_summaries <- train_logs %>%
+  group_by(run) %>%
+  summarise(mean_epoch_time = mean(time[split=='train']),
+            min_val = min(rmse[split=='val']),
+            min_val_epoch = epoch[rmse == min_val])
+
+
+ggplot(train_logs, aes(x = epoch, y=rmse, color = split)) +
+  geom_line() +
+  scale_color_viridis_d(end=.8) +
+  theme_bw() +
+  facet_wrap(~run, scales='free') +
+  ggtitle('Training Logs')
 
 ```
 
+### Take a look at some time series
+
 ```{r}
-rm(check
-   )
+reader <- function(id){
+  df <- read_csv(grep(paste0(id,'/'), files, value = T),show_col_types = FALSE) %>% mutate(run = id)
+}
+
+runs <- c('200_10')
+
+########### Train log
+files <- list.files('../data/out/off_test', full.names = T, recursive = T, pattern = 'test_results.csv')
+
+test_segs <- c('1450','1462')
+
+results <- runs %>% map_dfr(reader) %>%
+  filter(seg_id_nat %in% test_segs) %>%
+  group_by(date, seg_id_nat) %>%
+  mutate(ob_number = row_number()) %>% ungroup() %>%
+  filter(ob_number %in% c(min(ob_number), max(ob_number))) %>%
+  mutate(pred_type = factor(ob_number, labels = c('Late Sequence Pred', 'Early Sequence Pred'))) %>%
+  select(-ob_number) %>%
+  pivot_wider(names_from = pred_type, values_from = temp_pred) %>%
+  pivot_longer(c(`Late Sequence Pred`, `Early Sequence Pred`, temp_ob))
+
+
+
+
+results %>% filter(seg_id_nat %in% test_segs,
+                   date > '2010-01-01') %>%
+  ggplot(aes(x=date, y = value, color = name)) +
+  geom_line(alpha = .5) +
+  scale_color_viridis_d(option='plasma', end = .8) +
+  facet_wrap(~seg_id_nat,nrow=2) +
+  theme_bw()
+
+
 ```
 

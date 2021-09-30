@@ -20,13 +20,13 @@ y_vars: ['seg_tave_water']
 
 primary_variable: 'temp'
 
-seq_length: [365]
+seq_length: [60]
 # out_dim: 60
-batch_size: 5
+batch_size: 10
 epochs: 1
 epochs_pre: 1
-kernel_size: 4
-layer_size: 5
+kernel_size: [2,6]
+layer_size: [4,2]
 learning_rate: 0.001
 offset: [10]
 scale_y: True

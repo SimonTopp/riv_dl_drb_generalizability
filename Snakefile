@@ -1,3 +1,5 @@
+#from snakemake.io import expand
+
 configfile: "config.yml"
 from gwn.generate_training_data_drb import prep_data
 from gwn.test_drb import plot_results
@@ -6,14 +8,18 @@ from gwn.predict import predict
 
 rule all:
     input:
-        expand("{outdir}/{seq_length}_{offset}/figs/training_loss.png",
+        [expand("{outdir}/{seq_length}_{offset}/{kernel_size}_{layer_size}/figs/training_loss.png",
             outdir=config["out_dir"],
             seq_length=config["seq_length"],
-            offset=config['offset']),
-        expand("{outdir}/{seq_length}_{offset}/config.yml",
+            offset=config['offset'],
+            kernel_size=config['kernel_size'][i],
+            layer_size=config['layer_size'][i]) for i in range(len(config['kernel_size']))],
+        [expand("{outdir}/{seq_length}_{offset}/{kernel_size}_{layer_size}/config.yml",
             outdir=config["out_dir"],
             seq_length=config["seq_length"],
-            offset=config['offset']),
+            offset=config['offset'],
+            kernel_size=config['kernel_size'][i],
+            layer_size=config['layer_size'][i]) for i in range(len(config['kernel_size']))]
 
 rule copy_config:
     output:
@@ -55,10 +61,10 @@ rule train:
     input:
         config['out_dir'] + "/{seq_length}_{offset}/prepped.npz",
     output:
-        config['out_dir'] + "/{seq_length}_{offset}/adjmat_out.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/adjmat_pre_out.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/train_log.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/weights_final.pth",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/adjmat_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/adjmat_pre_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/train_log.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/weights_final.pth",
 
     run:
         train(input[0],
@@ -67,8 +73,8 @@ rule train:
             epochs=config['epochs'],
             epochs_pre=config['epochs_pre'],
             expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
-            kernel_size=config['kernel_size'],
-            layer_size=config['layer_size'],
+            kernel_size= wildcards.kernel_size, #config['kernel_size'],
+            layer_size= wildcards.layer_size,
             scale_y=config['scale_y'],
             learning_rate=config['learning_rate']
             )
@@ -76,16 +82,16 @@ rule train:
 rule predict:
     input:
         config['out_dir'] + "/{seq_length}_{offset}/prepped.npz",
-        config['out_dir'] + "/{seq_length}_{offset}/weights_final.pth",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/weights_final.pth",
     output:
-        config['out_dir'] + "/{seq_length}_{offset}/test_results.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/test_results.csv",
     run:
         predict(input[0],
             config['out_dir'],
             batch_size=config['batch_size'],
             expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
-            kernel_size=config['kernel_size'],
-            layer_size=config['layer_size'],
+            kernel_size=wildcards.kernel_size,
+            layer_size=wildcards.layer_size,
             clean_prepped=config['clean_prepped'],
             scale_y=config['scale_y'],
             learning_rate=config['learning_rate'],
@@ -94,12 +100,12 @@ rule predict:
 
 rule viz:
     input:
-        config['out_dir'] + "/{seq_length}_{offset}/adjmat_out.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/adjmat_pre_out.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/test_results.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/train_log.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/adjmat_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/adjmat_pre_out.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/test_results.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/train_log.csv",
     output:
-        config['out_dir']+"/{seq_length}_{offset}/figs/training_loss.png",
+        config['out_dir']+"/{seq_length}_{offset}/{kernel_size}_{layer_size}/figs/training_loss.png",
     run:
-        plot_results(config['out_dir']+"/"+str(wildcards.seq_length)+"_"+str(wildcards.offset))
+        plot_results(f"config['out_dir']/{wildcards.seq_length}_{wildcards.offset}/{wildcards.kernel_size}_{wildcards.layer_size}")
 
