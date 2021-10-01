@@ -46,7 +46,6 @@ rule prep_io_data:
             val_end_date=config['val_end_date'],
             test_start_date=config['test_start_date'],
             test_end_date=config['test_end_date'],
-            primary_variable=config['primary_variable'],
             seq_length= int(wildcards.seq_length), #config['seq_length'],
             offset= float(wildcards.offset), #config['offset'],
             out_file= output[0], #out_dir + "/prepped.npz",
@@ -54,7 +53,9 @@ rule prep_io_data:
             distfile=config['dist_file'],
             dist_idx_name="rowcolnames",
             dist_type=config['dist_type'],
-            clip_y=config['clip_y']
+            clip_y=config['clip_y'],
+            lto = config['lto'],
+            lto_type = config['lto_type']
         )
 
 rule train:
@@ -73,8 +74,8 @@ rule train:
             epochs=config['epochs'],
             epochs_pre=config['epochs_pre'],
             expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
-            kernel_size= wildcards.kernel_size, #config['kernel_size'],
-            layer_size= wildcards.layer_size,
+            kernel_size= int(wildcards.kernel_size), #config['kernel_size'],
+            layer_size= int(wildcards.layer_size),
             scale_y=config['scale_y'],
             learning_rate=config['learning_rate']
             )
@@ -90,8 +91,8 @@ rule predict:
             config['out_dir'],
             batch_size=config['batch_size'],
             expid= str(wildcards.seq_length)+"_"+str(wildcards.offset),
-            kernel_size=wildcards.kernel_size,
-            layer_size=wildcards.layer_size,
+            kernel_size=int(wildcards.kernel_size),#config['kernel_size'],
+            layer_size=int(wildcards.layer_size),
             clean_prepped=config['clean_prepped'],
             scale_y=config['scale_y'],
             learning_rate=config['learning_rate'],
@@ -107,5 +108,5 @@ rule viz:
     output:
         config['out_dir']+"/{seq_length}_{offset}/{kernel_size}_{layer_size}/figs/training_loss.png",
     run:
-        plot_results(f"config['out_dir']/{wildcards.seq_length}_{wildcards.offset}/{wildcards.kernel_size}_{wildcards.layer_size}")
+        plot_results(config['out_dir'] + f"/{wildcards.seq_length}_{wildcards.offset}/{wildcards.kernel_size}_{wildcards.layer_size}")
 

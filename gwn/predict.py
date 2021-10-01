@@ -17,7 +17,7 @@ def predict(data_in,
           clean_prepped=True,
           quantile=0.9):
 
-    out_dir = out_dir+'/'+expid
+    out_dir = os.path.join(out_dir, expid, f"{kernel_size}_{layer_size}")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     data, dataloader, engine = util.load_model(data_in,

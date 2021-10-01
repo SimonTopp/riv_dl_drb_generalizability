@@ -59,6 +59,42 @@ def sel_partition_data(dataset, start_dates, end_dates):
         raise ValueError("start_dates must be either str, list, or tuple")
 
 
+def pull_lto_years(obs, ntest = 10, nval = 5, test='max'):
+    """
+    Pull years with min and max temperature values for leave time out tests
+    :param obs: [csv] temperature observations to pull min and max years from
+    :param ntest: [int] number of years to set aside for testing
+    :param nval: [int] number of years to set aside for validation
+    :parm test: [str] whether to set aside max temp years or min temp years for testing (option = 'max','min')
+    """
+    temp_df = pd.read_csv(obs)
+    temp_df.date = pd.to_datetime(temp_df.date)
+    temp_df = temp_df[temp_df.date >= '1980-10-01']
+
+    temp_df['water_year'] = temp_df.date.dt.year.where(temp_df.date.dt.month < 10, temp_df.date.dt.year + 1)
+    mean_temp = temp_df[['mean_temp_c', 'water_year']].groupby('water_year').mean()
+    if test=='max':
+        years_test = mean_temp.sort_values('mean_temp_c', ascending=False)[0:ntest]
+    if test=='min':
+        years_test = mean_temp.sort_values('mean_temp_c')[0:ntest]
+
+    mean_temp = mean_temp[~mean_temp.index.isin(years_test.index)]
+
+    ## We prefer consecutive years, we'll say 2000 and next five years that aren't in test
+    ## This overlaps with original val years and has some back to back years for hot runs
+    years_val = mean_temp.loc[mean_temp.index > 2000].iloc[0:nval]
+
+    years_train = mean_temp[~mean_temp.index.isin(years_val.index)]
+
+    def wy_to_date(wys):
+        return {'start': [f"{i-1}-10-01" for i in wys.index], 'end': [f"{i}-9-30" for i in wys.index]}
+
+    train_out = wy_to_date(years_train)
+    test_out = wy_to_date(years_test)
+    val_out = wy_to_date(years_val)
+
+    return train_out, test_out, val_out
+
 def separate_trn_tst(
     dataset,
     train_start_date,
@@ -67,6 +103,8 @@ def separate_trn_tst(
     val_end_date,
     test_start_date,
     test_end_date,
+    lto=False,
+    lto_type = 'max'
 ):
     """
     separate the train data from the test data according to the start and end
@@ -86,9 +124,17 @@ def separate_trn_tst(
     :param test_end_date: [str or list] fmt: "YYYY-MM-DD"; date(s) to end test
     period (can have multiple discontinuos periods)
     """
-    train = sel_partition_data(dataset, train_start_date, train_end_date)
-    val = sel_partition_data(dataset, val_start_date, val_end_date)
-    test = sel_partition_data(dataset, test_start_date, test_end_date)
+    if lto:
+        trn, tst, val = pull_lto_years('data/in/temperature_observations_drb.csv', test=lto_type)
+        train = sel_partition_data(dataset, trn['start'],trn['end'])
+        val = sel_partition_data(dataset, val['start'],val['end'])
+        test = sel_partition_data(dataset,tst['start'],tst['end'])
+
+    else:
+        train = sel_partition_data(dataset, train_start_date, train_end_date)
+        val = sel_partition_data(dataset, val_start_date, val_end_date)
+        test = sel_partition_data(dataset, test_start_date, test_end_date)
+
     return train, val, test
 
 
@@ -268,14 +314,11 @@ def prep_data(
     distfile=None,
     dist_idx_name="rowcolnames",
     dist_type="updown",
-    primary_variable="temp",
-    #catch_prop_file=None,
-    #exclude_file=None,
-    #log_q=False,
     out_file=None,
-    #segs=None,
     normalize_y=False,
-    clip_y=True
+    clip_y=True,
+    lto=False,
+    lto_type='max'
 ):
     """
     prepare input and output data for DL model training read in and process
@@ -336,6 +379,8 @@ def prep_data(
         val_end_date,
         test_start_date,
         test_end_date,
+        lto=lto,
+        lto_type = lto_type
     )
 
     x_scl, x_std, x_mean = scale(x_data)
@@ -357,6 +402,8 @@ def prep_data(
         val_end_date,
         test_start_date,
         test_end_date,
+        lto=lto,
+        lto_type=lto_type,
     )
     y_pre_trn, y_pre_val, y_pre_tst = separate_trn_tst(
         y_pre,
@@ -366,6 +413,8 @@ def prep_data(
         val_end_date,
         test_start_date,
         test_end_date,
+        lto=lto,
+        lto_type=lto_type
     )
 
     if normalize_y:

@@ -18,19 +18,17 @@ clean_prepped: False
 x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
 y_vars: ['seg_tave_water']
 
-primary_variable: 'temp'
-
 seq_length: [60]
 # out_dim: 60
 batch_size: 10
 epochs: 1
 epochs_pre: 1
-kernel_size: [2,6]
-layer_size: [4,2]
+kernel_size: [6]
+layer_size: [2]
 learning_rate: 0.001
-offset: [10]
+offset: [15]
 scale_y: True
-clip_y: False
+clip_y: True
 ci_quant: 0.9
 
 train_start_date:
@@ -49,3 +47,7 @@ test_end_date:
   - '1985-09-30'
   - '2016-09-30'
   - '2021-09-30'
+
+## For min/max temp year tests
+lto: True
+lto_type: 'max'
