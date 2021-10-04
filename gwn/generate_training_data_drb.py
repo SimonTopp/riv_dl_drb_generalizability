@@ -95,6 +95,18 @@ def pull_lto_years(obs, ntest = 10, nval = 5, test='max'):
 
     return train_out, test_out, val_out
 
+def llo_mask(seg_csv, partition, test_group, test = False):
+    test_groups = pd.read_csv(seg_csv)
+    segs = test_groups.loc[test_groups.test_group == test_group]
+    segs = segs.seg_id_nat.dropna().astype(int)
+
+    if test:
+        partition_masked = partition.where(partition.seg_id_nat.isin(segs), np.nan)
+    else:
+        partition_masked = partition.where(~partition.seg_id_nat.isin(segs), np.nan)
+
+    return partition_masked
+
 def separate_trn_tst(
     dataset,
     train_start_date,
@@ -104,7 +116,9 @@ def separate_trn_tst(
     test_start_date,
     test_end_date,
     lto=False,
-    lto_type = 'max'
+    lto_type = 'max',
+    llo=False,
+    test_group=1,
 ):
     """
     separate the train data from the test data according to the start and end
@@ -134,6 +148,11 @@ def separate_trn_tst(
         train = sel_partition_data(dataset, train_start_date, train_end_date)
         val = sel_partition_data(dataset, val_start_date, val_end_date)
         test = sel_partition_data(dataset, test_start_date, test_end_date)
+
+    if llo:
+        train = llo_mask('data/in/DRB_spatial/llo_groups.csv', train, test_group, test = False)
+        val = llo_mask('data/in/DRB_spatial/llo_groups.csv', val, test_group, test=False)
+        test = llo_mask('data/in/DRB_spatial/llo_groups.csv', test, test_group, test=True)
 
     return train, val, test
 
@@ -274,7 +293,7 @@ def convert_batch_reshape(dataset, seq_len=365, offset=1, y = False):
         period = int(seq_len*offset)
         reshaped = reshaped[:,-period:,...]
     elif y and offset > 1:
-        period=offset
+        period=int(offset)
         reshaped = reshaped[:,-period:,...]
 
     return reshaped
@@ -318,7 +337,9 @@ def prep_data(
     normalize_y=False,
     clip_y=True,
     lto=False,
-    lto_type='max'
+    lto_type='max',
+    llo=False,
+    test_group=1,
 ):
     """
     prepare input and output data for DL model training read in and process
@@ -404,6 +425,8 @@ def prep_data(
         test_end_date,
         lto=lto,
         lto_type=lto_type,
+        llo=llo,
+        test_group=test_group,
     )
     y_pre_trn, y_pre_val, y_pre_tst = separate_trn_tst(
         y_pre,

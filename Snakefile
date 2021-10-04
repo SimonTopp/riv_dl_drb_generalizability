@@ -55,7 +55,9 @@ rule prep_io_data:
             dist_type=config['dist_type'],
             clip_y=config['clip_y'],
             lto = config['lto'],
-            lto_type = config['lto_type']
+            lto_type = config['lto_type'],
+            llo=config['llo'],
+            test_group=config['test_group'],
         )
 
 rule train:
