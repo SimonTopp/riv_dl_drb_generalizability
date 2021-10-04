@@ -26,10 +26,10 @@ Did a quick grid search of prediction windows and lookback periods to identify b
 labels are I_J where I is total sample length and J is percent of sample predicted on, so 60_0.25 is trained on sequence lengths of 60 with prediction on the last 25% (15) of the sequence (Ignore the ud_dist run for now)
 
 ```{r}
-files <- list.files('../data/out', full.names = T, recursive = T, pattern = 'test_results.csv')
+files <- list.files('../data/out/60_15/', full.names = T, recursive = T, pattern = 'test_results.csv')
 
-runs <- files %>% map(~str_split(., '/',5)) %>% flatten() %>% map(.,4) %>% unlist()
-runs <- runs[1:9]
+runs <- files %>% map(~str_split(., '/')) %>% flatten() %>% map(.,6) %>% unlist()
+#runs <- runs[1:9]
 
 reader <- function(id){
   df <- read_csv(grep(paste0(id,'/'), files, value = T),show_col_types = FALSE) %>% mutate(run = id)
