@@ -2,7 +2,7 @@
 title: "viz_scratch"
 output: html_document
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -139,12 +139,17 @@ results <- read_csv(paste0('../data/out/',id,'/test_results.csv')) %>%
   mutate(within = ifelse(temp_ob > ci_low & temp_pred < ci_high, 'within','not within'),
          piw = ci_high-ci_low)
 
+results <- llo %>% mutate(within = ifelse(temp_ob > ci_low & temp_ob < ci_high, 'within','not within'),
+         piw = ci_high-ci_low)
+
+sum(results$within == 'within', na.rm = T)/sum(results$within %in% c('within','not within'), na.rm =T)
+
 ## Calc percent in CI
 print('Percent of test obs in CI')
 results %>% filter(!is.na(temp_ob)) %>%
   group_by(within) %>%
   summarise(count = n()) %>%
-  mutate(percent = count/(6596+74557))
+  mutate(percent = count/nrow(results %>% filter(!is.na(temp_ob))))
 
 ci_summary <- results %>% 
   #filter(!is.na(temp_ob)) %>%
@@ -172,6 +177,7 @@ seg_plotter_sf <- function(var){
 }
 
 p2 <- seg_plotter_sf('mean_ci') + ggtitle('Mean Segment PIW \n(Outlier segments not shown)')
+p2
 p3 <- seg_plotter_sf('std_ci') + ggtitle('Std PIW')
 gridExtra::grid.arrange(p2,p3, nrow=1)
 
@@ -644,6 +650,37 @@ results %>% filter(seg_id_nat %in% test_segs,
   scale_color_viridis_d(option='plasma', end = .8) +
   facet_wrap(~seg_id_nat,nrow=2) +
   theme_bw()
+
+
+```
+
+#### Reach Plotter
+
+```{r}
+baseline <- reader('6_2', list.files('../data/out/hypertuning_kernel_layer/60_15', full.names = T, recursive = T, pattern = 'test_results.csv'))
+
+llo <- view_test_results('../data/out/llo')
+llo_groups <- read_csv('../data/in/DRB_spatial/llo_groups.csv') %>%
+    mutate(run = paste0('group_',test_group)) %>% select(run, seg_id_nat)
+llo <- llo %>% inner_join(llo_groups)
+
+reach_plotter <- function(reaches, date_start,date_end, df){
+  nreaches <- length(reaches)
+  
+  df %>% filter(seg_id_nat %in% reaches,
+                date >= date_start, date <= date_end) %>%
+    mutate(ci_low = ifelse(ci_low < 0, 0, ci_low)) %>%
+    ggplot(aes(x = date)) +
+    geom_ribbon(aes(ymin = ci_low, ymax = ci_high), alpha = .2) +
+    geom_point(aes(y=temp_pred, color = "Predicted"), size = .6, alpha = .2) +
+    geom_point(aes(y=temp_ob, color = "Observed"), size = .6, alpha = .2) +
+    scale_color_viridis_d(begin =.3, end = .6) +
+    facet_wrap(~seg_id_nat, nrow = nreaches, scales = 'free') +
+    theme_bw() +
+    labs(x = 'Date', y = 'Temperature (°C)')
+}
+
+reach_plotter(c(1498,1565),'2011-10-01','2016-09-30', llo)
 
 
 ```

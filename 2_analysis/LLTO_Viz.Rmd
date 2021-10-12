@@ -26,6 +26,10 @@ spatial <- readRDS('../data/in/DRB_spatial/network.rds')
 edges <- spatial$edges %>% st_as_sf()
 
 rgcn_stats <- summary_stats('../data/rgcn_out/output_DRB_baseline', 'rgcn')[[1]]
+# rgcn_stats <- map2(rgcn_stats[[1]], rgcn_stats[[2]], bind_rows)
+# 
+# rgcn_stats$temps %>% select(-c(count, bias)) %>% pivot_wider(names_from=run, values_from = rmse) %>%
+#   mutate(diff = baseline-no_pretrain)
 
 gwn_stats <- summary_stats('../data/out/hypertuning_kernel_layer/60_15', 'gwn')[[2]]
 
@@ -51,9 +55,9 @@ p3 <- rgcn_stats$months %>% mutate(model= 'RGCN') %>%
   mutate(name = factor(name, levels = c('rmse', 'bias'))) %>%
   ggplot(aes(x=month, y=value, fill=model, shape = name)) +
   scale_fill_viridis_d(end =.6) +
-  scale_y_continuous(breaks = c(0,1,2)) +
+  #scale_y_continuous(breaks = c(0,1,2)) +
   geom_col(position = 'dodge') +
-  facet_wrap(~name,nrow=2) +
+  facet_wrap(~name,nrow=2, scales='free_y') +
   theme_minimal() +
   labs(x = 'Month', y = '°Celsius')
 
@@ -66,7 +70,7 @@ layout <- rbind(c(1,1,2),
 
 g <- gridExtra::grid.arrange(p1,p2,p3, layout_matrix = layout)
 
-ggsave('figures/baseline_comps.png',plot = g, width = 5, height = 4.5, units = 'in')
+#ggsave('figures/baseline_comps.png',plot = g, width = 5, height = 4.5, units = 'in')
 
 rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
@@ -91,18 +95,29 @@ rgcn_lto <- map2(rgcn_lto[[1]], rgcn_lto[[2]], bind_rows)
 gwn_lto <- summary_stats('../data/out/lto', 'gwn')
 gwn_lto <- map2(gwn_lto[[1]], gwn_lto[[2]], bind_rows)
 
-rgcn_diff_min <- seg_rmse_diff(rgcn_stats$segs, rgcn_lto$segs %>% filter(run == 'lto_min'), 'Baseline', 'RGCN_LTO_Min')
-rgcn_diff_max <- seg_rmse_diff(rgcn_stats$segs, rgcn_lto$segs %>% filter(run == 'lto_max'), 'Baseline', 'RGCN_LTO_Max')
+rgcn_diff_min <- seg_rmse_diff(rgcn_stats$segs, rgcn_lto$segs %>% filter(run == 'lto_min'), 'Baseline', 'Holdout')
+rgcn_diff_max <- seg_rmse_diff(rgcn_stats$segs, rgcn_lto$segs %>% filter(run == 'lto_max'), 'Baseline', 'Holdout')
 
-gwn_diff_min <- seg_rmse_diff(gwn_stats$segs, gwn_lto$segs %>% filter(run == 'lto_min'), 'Baseline', 'GWN_LTO_Min')
-gwn_diff_max <- seg_rmse_diff(gwn_stats$segs, gwn_lto$segs %>% filter(run == 'lto_max'), 'Baseline', 'GWN_LTO_Max')
+gwn_diff_min <- seg_rmse_diff(gwn_stats$segs, gwn_lto$segs %>% filter(run == 'lto_min'), 'Baseline', 'Holdout')
+gwn_diff_max <- seg_rmse_diff(gwn_stats$segs, gwn_lto$segs %>% filter(run == 'lto_max'), 'Baseline', 'Holdout')
 
-full <- rgcn_diff_max %>% select(seg_id_nat, rmse_diff) %>% mutate(model = 'RGCN', holdout = 'Max Temps') %>%
-  bind_rows(rgcn_diff_min %>% select(seg_id_nat, rmse_diff) %>% mutate(model = 'RGCN', holdout = 'Min Temps')) %>%
-  bind_rows(gwn_diff_max %>% select(seg_id_nat, rmse_diff) %>% mutate(model = 'GWN', holdout = 'Max Temps')) %>%
-  bind_rows(gwn_diff_min %>% select(seg_id_nat, rmse_diff) %>% mutate(model = 'GWN', holdout = 'Min Temps'))
+full <- rgcn_diff_max %>% mutate(model = 'RGCN', holdout = 'Max Temps') %>%
+  bind_rows(rgcn_diff_min%>% mutate(model = 'RGCN', holdout = 'Min Temps')) %>%
+  bind_rows(gwn_diff_max  %>% mutate(model = 'GWN', holdout = 'Max Temps')) %>%
+  bind_rows(gwn_diff_min  %>% mutate(model = 'GWN', holdout = 'Min Temps'))
+
+sig_test <- full %>%
+  filter(!is.na(rmse_diff)) %>%
+  group_by(holdout, model) %>%
+  nest() %>%
+  mutate(wilcox = map(data, ~wilcox.test(.$Baseline, .$Holdout) %>% broom::tidy())) %>%
+  select(-data) %>%
+  unnest(cols = c(wilcox)) %>%
+  mutate(p.value = round(p.value,3))
+
 
 full %>% 
+  select(seg_id_nat, rmse_diff) %>%
   mutate(rmse_diff = ifelse(rmse_diff > 2, 2, ifelse(rmse_diff < -2, -2, rmse_diff))) %>%
   seg_plotter_sf(., 'rmse_diff') +
   scale_color_gradient2(na.value = 'white', mid = 'grey80', name = 'RMSE\nDifference', labels = c('<-2', '-1', "0", '1', '>2')) +
@@ -119,14 +134,15 @@ meds <- lto_full %>%
   group_by(model, run) %>%
   summarise(median = median(rmse))
 
-ggplot(lto_full, aes(x = rmse, y = run, fill = model)) + geom_density_ridges(alpha = .3) +
+ggplot(lto_full, aes(x = rmse, y = run, fill = model)) + geom_density_ridges(alpha = .3, scale = .9) +
   scale_fill_viridis_d(end = .6) + 
   geom_vline(data= meds %>% filter(run == 'baseline'), aes(xintercept = median, color = model)) +
   geom_point(data= meds, aes(x = median, color = model), size = 2, shape =23) +
   scale_color_viridis_d(end = .6) + 
-  scale_y_discrete(labels = c('Baseline', 'Max Temp', 'Min Temp')) +
+  scale_y_discrete(labels = c('Baseline', 'Train Cold/\nTest Hot', 'Train Hot/\nTest Cold')) +
   xlim(0,7) +
-  theme_classic()
+  theme_classic() +
+  ggtitle('Comparison of Reach Scale RMSE')
 
 ggsave('figures/lto_ridges.png', width = 4.5, height = 3, units = 'in')  
 
@@ -141,46 +157,107 @@ rgcn_stats$temps %>% bind_rows(rgcn_lto$temps) %>%
   pivot_wider(names_from = run, values_from = rmse) %>%
   mutate(`Max Dif` = baseline-lto_max,
          `Min Dif` = baseline-lto_min) %>%
-  select(`Temp. Bin`, `Max Dif`, `Min Dif`, model) %>%
-  kableExtra::kbl(caption = 'Overall RMSE by Temperature Bin') %>%
+  select(`Temp. Bin`, `Train Cold/Test Hot` = `Max Dif`, `Train Hot/Test Cold` = `Min Dif`) %>%
+  kableExtra::kbl(caption = 'Overall Change in RMSE from Baseline by Temperature Bin') %>%
   kableExtra::kable_material(full_width = F)
 
 ```
 
 
+### LLO Comps
+
 
 ```{r}
 llo_groups <- read_csv('../data/in/DRB_spatial/llo_groups.csv')
 
+rgcn_llo <- summary_stats('../data/rgcn_out/llo', 'rgcn', llo = T)
+rgcn_llo <- pmap(rgcn_llo, bind_rows)
 
-baseline_rgcn <- view_rmse_by_seg('../data/rgcn_out/output_DRB_baseline', 'rgcn')
+gwn_llo <- summary_stats('../data/out/llo', 'gwn', llo =T)
+gwn_llo <- pmap(gwn_llo, bind_rows)
 
-seg_plotter_sf(baseline_rgcn, 'rmse')
+p1 <- rgcn_llo$segs %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_llo$segs %>% mutate(model = 'GWN')) %>%
+  seg_plotter_sf(., 'rmse') +
+  facet_wrap(~model, nrow =1)
 
-lto_rgcn <- view_rmse_by_seg('../data/rgcn_out/lto', 'rgcn')
+rgcn_diff <- seg_rmse_diff(rgcn_stats$segs, rgcn_llo$segs, 'Baseline', 'Holdout')
 
-lto_min_diff <- seg_rmse_diff(baseline_rgcn, lto_gwn %>%filter(run=='lto_min'), 'Baseline', 'LTO Min')
+gwn_diff <- seg_rmse_diff(gwn_stats$segs, gwn_llo$segs, 'Baseline', 'Holdout')
 
-lto_min_diff %>% seg_plotter_sf(., 'rmse_diff') +
-  scale_color_gradient2(na.value = 'white', mid = 'grey90') +
-  ggtitle('RMSE Difference \n(Baseline - LLO)')
+full <- gwn_diff %>% select(seg_id_nat, rmse_diff) %>% mutate(model = 'GWN') %>%
+  bind_rows(rgcn_diff %>% select(seg_id_nat, rmse_diff) %>% mutate(model = 'RGCN'))
 
-lto_gwn <- view_rmse_by_seg('../data/out/lto','gwn')
+p2 <-full %>% 
+  mutate(rmse_diff = ifelse(rmse_diff > 3, 3, ifelse(rmse_diff < -3, -3, rmse_diff))) %>%
+  seg_plotter_sf(., 'rmse_diff') +
+  scale_color_gradient2(na.value = 'white', mid = 'grey80', name = 'RMSE\nDifference', breaks = c(-3,-1.5,0,1.5,3),labels = c('<-3', '-1.5', "0", '1.5', '>3')) +
+  facet_wrap(~model) 
 
-seg_plotter_sf(lto_rgcn, 'rmse') + facet_wrap(~run)
+g <- gridExtra::grid.arrange(p1,p2, nrow =2)
 
-llo_rgcn <- view_rmse_by_seg('../data/rgcn_out/llo','rgcn')
+ggsave('figures/llo_spatial.png',plot=g, width = 4,height = 6, units = 'in')  
 
-seg_plotter_sf(llo_rgcn,'rmse')
+rgcn_base_llo <- rgcn_stats$segs %>% mutate(test_group = case_when(seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 1]~'group_1',
+                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 2]~'group_2',
+                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 3]~'group_3'),
+                                            model = 'RGCN') %>%
+  select(seg_id_nat, rmse, test_group, model)
 
-llo_diff <- seg_rmse_diff(baseline_rgcn, llo_rgcn, 'Baseline', 'LLO')
+gwn_base_llo <- gwn_stats$segs %>% mutate(test_group = case_when(seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 1]~'group_1',
+                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 2]~'group_2',
+                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 3]~'group_3'),
+                                          model = 'GWN') %>%
+  select(seg_id_nat, rmse, test_group, model)
 
-llo_diff %>% seg_plotter_sf(., 'rmse_diff') +
-  scale_color_gradient2(na.value = 'white', mid = 'grey90') +
-  ggtitle('RMSE Difference \n(Baseline - LLO)')
+full_reshape <- rgcn_diff %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_diff %>% mutate(model = 'GWN')) %>%
+  mutate(test_group = case_when(seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 1]~'Headwaters',
+                                seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 2]~'Piedmont',
+                                seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 3]~'Coastal'))
 
 
+full_reshape %>%
+  group_by(model) %>%
+  summarise(mean_diff = round(mean(rmse_diff, na.rm = T),3),
+            sd_dff = round(sd(rmse_diff, na.rm = T),3),
+            median = round(median(rmse_diff, na.rm = T),3))
 
+sig_test <- full_reshape %>%
+  filter(!is.na(rmse_diff)) %>%
+  select(-c(Baseline, Holdout)) %>%
+  pivot_wider(names_from = model, values_from = rmse_diff) %>%
+  group_by(test_group) %>%
+  nest() %>%
+  mutate(wilcox = map(data, ~wilcox.test(.$GWN, .$RGCN) %>% broom::tidy()))
+
+sig_test <- full_reshape %>%
+  filter(!is.na(rmse_diff)) %>%
+  #select(-c(Baseline, Holdout)) %>%
+  #pivot_wider(names_from = model, values_from = rmse_diff) %>%
+  group_by(test_group, model) %>%
+  nest() %>%
+  mutate(wilcox = map(data, ~wilcox.test(.$Baseline, .$Holdout) %>% broom::tidy())) %>%
+  select(-data) %>%
+  unnest(cols = c(wilcox)) %>%
+  mutate(p.value = round(p.value,3))
+
+
+full_reshape %>% filter(!is.na(rmse_diff)) %>%
+  select(-rmse_diff) %>%
+  pivot_longer(c(Baseline, Holdout)) %>%
+  mutate(test_group = factor(test_group, levels = c('Coastal', 'Piedmont','Headwaters'))) %>%
+  ggplot(., aes(x = value, y = test_group, fill = name)) +
+    geom_density_ridges(
+    quantile_lines = TRUE, quantiles = .5, scale = 0.9, alpha = 0.7,
+    vline_size = 1) +
+  scale_fill_viridis_d(alpha = .3, end = .6) +
+  facet_wrap(~model) +
+  coord_cartesian(xlim=c(0,8)) +
+  labs(x = 'RMSE', y='Holdout Region', fill = 'Model Run') +
+  theme_bw()
+
+ggsave('figures/llo_dist.png',width = 5.5, height = 4, units = 'in')
 ```
 
 
@@ -233,28 +310,3 @@ gridExtra::grid.arrange(p1,p2, p3,p4, layout_matrix = layout) #nrow = 2, widths 
 ```
 
 
-
-```{r cars}
-train_logs <- view_train_longs('../data/out/llo')
-
-log_summaries <- train_logs %>%
-  group_by(run) %>%
-  summarise(mean_epoch_time = mean(time[split=='train']),
-            min_val = min(rmse[split=='val']),
-            min_val_epoch = epoch[rmse == min_val])
-
-ggplot(train_logs, aes(x = epoch, y=rmse, color = split)) +
-  geom_line() +
-  scale_color_viridis_d(end=.8) +
-  theme_bw() +
-  facet_wrap(~run, scales='free') +
-  ggtitle('Training Logs')
-
-
-llo_rmse <- view_rmse_by_seg('../data/out/llo')
-
-baseline <- view_rmse_by_seg('../data/out/hypertuning_kernel_layer/60_15') %>%
-  filter(run == '6_2') %>%
-  mutate(run = 'baseline')
-
-```
