@@ -45,7 +45,7 @@ test_end_date:
   - '2021-09-30'
 
 ## For min/max temp year tests
-lto: False
-lto_type: 'max'
-llo: True
+lto: True
+lto_type: 'min'
+llo: False
 test_group: 1

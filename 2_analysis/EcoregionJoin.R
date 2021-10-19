@@ -9,9 +9,9 @@ unzip('data/in/DRB_spatial/EcoregionsIII.zip')
 file.remove('data/in/DRB_spatial/EcoregionsIII.zip')
 
 ### Join to DRB
-ecoregs <- st_read('data/in/DRB_spatial/EcoregionsIII/us_eco_l3.shp')
+ecoregs <- st_read('../data/in/DRB_spatial/EcoregionsIII/us_eco_l3.shp')
 
-drb_segs <- readRDS('data/in/DRB_spatial/network.rds')
+drb_segs <- readRDS('../data/in/DRB_spatial/network.rds')
 
 drb_segs <- drb_segs$edges
 
@@ -23,7 +23,9 @@ ecoregs_clipped <- ecoregs %>% st_crop(st_bbox(drb_segs))
 
 ggplot(ecoregs_clipped %>% st_simplify(dTolerance = 500)) + geom_sf(aes(fill = US_L3NAME)) +
   geom_sf(data = drb_segs) +
-  geom_sf(data = check, color = 'red')
+  geom_sf(data = check, color = 'red') +
+  labs(fill = 'Level III\nEcoregions\nwithin the DRB') +
+  theme_minimal()
 
 ### All the NA's are in facet Middle Atlantic Coastal Plain
 
@@ -32,7 +34,7 @@ colSums(is.na(seg_ecoregions))
 
 seg_ecoregions %>% group_by(NA_L3NAME) %>% summarise(count = n())
 
-temp_obs <- read_csv('data/in/temperature_observations_drb.csv') %>%
+temp_obs <- read_csv('../data/in/temperature_observations_drb.csv') %>%
   filter(date > '1980-01-01')
 
 temp_obs <- temp_obs %>% left_join(seg_ecoregions %>% st_set_geometry(NULL) %>% select(seg_id_nat, ecoreg = NA_L3NAME)) 
@@ -42,16 +44,14 @@ temp_sums <- temp_obs %>% group_by(ecoreg) %>% summarise(count = n()) %>%
   mutate(total = sum(count),
         percent = count/total) 
 
-p1 <- temp_sums %>% 
+temp_sums %>% 
   left_join(ecoregs_clipped %>% select(ecoreg = NA_L3NAME) %>% st_simplify(dTolerance = 500)) %>%
   st_as_sf() %>%
   ggplot(., aes(fill = percent)) +
   geom_sf() +
-  scale_fill_viridis_c()
-
-p2 <- ecoregs_clipped %>% st_simplify(dTolerance = 500) %>%
-  ggplot() +
-  geom_sf(aes(fill = NA_L3NAME))
+  scale_fill_viridis_c(labels = scales::percent) +
+  labs(title = 'Proportion of Temp. Obs in Each Region', fill = 'Percent') +
+  theme_minimal()
 
 
 gridExtra::grid.arrange(p1, p2)
@@ -75,8 +75,11 @@ temp_sums %>% group_by(test_group) %>%
   left_join(ecoregs_clipped %>% select(ecoreg = NA_L3NAME) %>% st_simplify(dTolerance = 500)) %>%
   st_as_sf() %>%
   ggplot() +
-  geom_sf(aes(fill = factor(percent))) +
-  geom_sf(data = drb_segs)
+  geom_sf(aes(fill = factor(round(percent,2)))) +
+  scale_fill_viridis_d(option='plasma', labels = c('Piedmont', 'Coastal', 'Headwaters')) +
+  geom_sf(data = drb_segs) +
+  labs(fill = 'Hold Out Regions') +
+  theme_minimal()
   
 check <- temp_obs %>% 
   filter(in_space_holdout == T) %>%
