@@ -30,6 +30,7 @@ def train(data_in,
     os.makedirs(os.path.join(out_dir, 'tmp'), exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"training on {device}")
+
     data, dataloader, engine = util.load_model(data_in,
                out_dir,
                batch_size,

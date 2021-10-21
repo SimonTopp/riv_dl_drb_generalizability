@@ -32,14 +32,12 @@ rule copy_config:
 rule prep_io_data:
     input:
          config['obs_temp'],
-         config['obs_flow'],
          config['sntemp_file'],
     output:
         config['out_dir']+"/{seq_length}_{offset}/prepped.npz",
     run:
-        prep_data(input[0], input[1], input[2],
+        prep_data(input[0], input[1],
             x_vars=config['x_vars'],
-            y_vars=config['y_vars'],
             train_start_date=config['train_start_date'],
             train_end_date=config['train_end_date'],
             val_start_date=config['val_start_date'],
