@@ -404,6 +404,10 @@ def prep_data(
         "y_mean": y_mean.to_array().values,
         }
 
+    ###Test to reduce redundancy
+    data['ids_pre'] = coord_as_reshaped_array(x_scl, 'seg_id_nat', offset=offset, seq_len=seq_length)
+    data['dates_pre'] = coord_as_reshaped_array(x_scl, 'date', offset=offset, seq_len=seq_length)
+
     if distfile:
         data["dist_matrix"] = prep_adj_matrix(
             infile=distfile,

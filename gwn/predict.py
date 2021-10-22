@@ -34,8 +34,24 @@ def predict(data_in,
 
     scaler = dataloader["scaler"]
     out_dim = data['y_train'].shape[1]
+    engine.model.eval()
+    outputs_pre=[]
+    for iter, (x, y) in enumerate(dataloader['pre_train_loader'].get_iterator()):
+        trainx = torch.Tensor(x).to(device)
+        trainx = trainx.transpose(1,3)
+        with torch.no_grad():
+            output = engine.model(trainx).transpose(1,3)
+        outputs_pre.append(output)
+    outputs_pre = torch.cat(outputs_pre, dim=0).squeeze()
+    outputs_train = []
+    for iter, (x, y) in enumerate(dataloader['train_loader'].get_iterator()):
+        trainx = torch.Tensor(x).to(device)
+        output = model(trainx)
+        outputs.append(output)
 
-    outputs=[]
+    check =data['sf']
+
+    '''
     train_y = dataloader['y_train']
     train_x = dataloader['x_train']
     idx = np.arange(0, len(train_y)+1, step=batch_size)
@@ -62,11 +78,14 @@ def predict(data_in,
         with torch.no_grad():
             preds = engine.model(x)#.transpose(1, 3)
         outputs.append(preds)
+    '''
     preds_test = torch.cat(outputs, dim=0).squeeze()
     print('Done with Predictions')
 
 
     ##Calculate UQ bounds
+
+    ######Change to match updatea
     ci_low, ci_high = util.calc_uq(train_x[:,-out_dim:,...],         #xtrain,
                                    train_y,                         #dataloader['y_train'],   #ytrain
                                    preds_train,                     #y_pred_train,

@@ -20,8 +20,8 @@ x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", 
 
 seq_length: [60]
 batch_size: 10
-epochs: 1
-epochs_pre: 1
+epochs: 10
+epochs_pre: 5
 kernel_size: [6]
 layer_size: [2]
 learning_rate: 0.0005
