@@ -83,9 +83,9 @@ rule train:
 rule predict:
     input:
         config['out_dir'] + "/{seq_length}_{offset}/prepped.npz",
-        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/weights_final.pth",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/weights_best_val.pth",
     output:
-        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/test_results.csv",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/prepped_preds.npz",
     run:
         predict(input[0],
             config['out_dir'],
@@ -98,6 +98,15 @@ rule predict:
             learning_rate=config['learning_rate'],
             quantile=config['ci_quant']
             )
+
+rule calc_ci:
+    input:
+        config['out_dir'] + "/{seq_length}_{offset}/prepped.npz",
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/prepped_preds.npz",
+    output:
+        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/results.csv",
+
+
 
 rule viz:
     input:

@@ -74,16 +74,12 @@ def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=N
         cat_data = np.load(os.path.join(cat_data, 'prepped.npz'))
     data = {}
     for category in ['pre_train', 'train', 'val', 'test']:
-        if category!='pre_train':
-            data['y_' + category] = cat_data['y_'+ category]
-            data['x_' + category] = cat_data['x_'+ category]
-        if category=='pre_train':
-            data['y_' + category] = cat_data['y_' + category]
-            data['x_' + category] = cat_data['x_train']
+        data['y_' + category] = cat_data['y_'+ category]
+        data['x_' + category] = cat_data['x_'+ category]
+
     scaler = StandardScaler(mean = cat_data['y_mean'][0], std = cat_data['y_std'][0])
     # Data format
-    #for category in ['pre_train', 'train', 'val', 'test']:
-    #    data['x_' + category][..., 0] = scaler.transform(data['x_' + category][..., 0])
+
     data['pre_train_loader'] = DataLoader(data['x_pre_train'],data['y_pre_train'], batch_size)
     data['train_loader'] = DataLoader(data['x_train'], data['y_train'], batch_size)
     data['val_loader'] = DataLoader(data['x_val'], data['y_val'], valid_batch_size)
@@ -178,7 +174,7 @@ def load_model(data_in,
                      adjinit, out_dim, kernel_size, n_blocks, layer_size, scale_y)
 
     if load_weights:
-        engine.model.load_state_dict(torch.load(out_dir + "/weights_final.pth"))
+        engine.model.load_state_dict(torch.load(out_dir + "/weights_best_val.pth"))
 
     return data, dataloader, engine
 
@@ -188,21 +184,22 @@ class trainer():
                  blocks, layers, scale_y, nhid=32, wdecay=0.0001, dropout=0.3, gcn_bool=True, addaptadj=True):
         self.model = gwnet(device, num_nodes, dropout, supports=supports, gcn_bool=gcn_bool, addaptadj=addaptadj,
                            aptinit=aptinit, in_dim=in_dim, out_dim=out_dim, residual_channels=nhid,
-                           dilation_channels=nhid, skip_channels=nhid * 4, end_channels=nhid * 8, kernel_size=kernel,
+                           dilation_channels=nhid, skip_channels=nhid * 8, end_channels=nhid * 16, kernel_size=kernel,
                            blocks=blocks, layers=layers)
         #skip and end were 8 and 16 respectively
         self.model.to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lrate, weight_decay=wdecay)
-        self.loss = rmse #was mae
+        self.loss = util.rmse #was mae
         self.scaler = scaler
-        self.clip = 5
+        self.clip = 3
         self.scale_y = scale_y
+        self.scheduler = optim.lr_scheduler.LambdaLR(
+            self.optimizer, lr_lambda=lambda epoch: 0.97 ** epoch)
 
     def train(self, input, real_val):
         self.model.train()
         self.optimizer.zero_grad()
         input = nn.functional.pad(input,(1,0,0,0))
-        #input = self.scaler.transform(input)
         output = self.model(input)
         output = output.transpose(1,3)
         #output = [batch_size,12,num_nodes,1]
@@ -242,3 +239,15 @@ class trainer():
         else:
             metrics = metric(predict,real)
         return metrics
+
+    def predict(self, partition, dataloader):
+        self.model.eval()
+        predicted = []
+        for iter, (x, y) in enumerate(dataloader[f"{partition}_loader"].get_iterator()):
+            trainx = torch.Tensor(x).to(device)
+            trainx = trainx.transpose(1, 3)
+            with torch.no_grad():
+                output = engine.model(trainx).transpose(1, 3)
+            predicted.append(output)
+        predicted = torch.cat(predicted, dim=0).squeeze()
+        return predicted

@@ -14,6 +14,7 @@ def predict(data_in,
           randomadj=False,
           n_blocks=4,
           scale_y=False,
+          outfile = None,
           clean_prepped=True,
           quantile=0.9):
 
@@ -34,6 +35,23 @@ def predict(data_in,
 
     scaler = dataloader["scaler"]
     out_dim = data['y_train'].shape[1]
+
+    preds = {
+
+    }
+    data['preds_pre_train'] = engine.predict('pre_train', dataloader)
+    data['preds_train'] = engine.predict('train', dataloader)
+    data['preds_val'] = engine.predict('val',dataloader)
+    data['preds_test'] = engine.predict('test',dataloader)
+
+    if outfile:
+        np.savez_compressed(os.path.join(out_dir,'prepped_preds.npz'), **data)
+
+    return data
+
+
+    '''
+    
     engine.model.eval()
     outputs_pre=[]
     for iter, (x, y) in enumerate(dataloader['pre_train_loader'].get_iterator()):
@@ -51,7 +69,7 @@ def predict(data_in,
 
     check =data['sf']
 
-    '''
+    
     train_y = dataloader['y_train']
     train_x = dataloader['x_train']
     idx = np.arange(0, len(train_y)+1, step=batch_size)

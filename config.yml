@@ -8,6 +8,7 @@ dist_type: 'updown'
 out_dir: 'data/out/llo_1'
 code_dir: "gwn"
 clean_prepped: True
+early_stopping: 20
 
 ## Possible Xvars
 ## seg_ccov (cloud cover), seg_humid (humidity), seg_outlflow (streamflow out), seg_rain (rainfall), seg_shade (shade_fraction),
@@ -20,8 +21,8 @@ x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", 
 
 seq_length: [60]
 batch_size: 10
-epochs: 10
-epochs_pre: 5
+epochs: 2
+epochs_pre: 1
 kernel_size: [6]
 layer_size: [2]
 learning_rate: 0.0005

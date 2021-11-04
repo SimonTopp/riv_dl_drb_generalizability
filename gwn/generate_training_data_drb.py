@@ -313,9 +313,9 @@ def prep_data(
             'dates_ids_tst: un-batched dates and national seg ids for testing
                             data [n_yrs, n_seg, len_seq, 2]
     """
-    ds_pre = xr.open_zarr(pretrain_file)
+    ds_pre = xr.open_zarr(pretrain_file).sortby(['seg_id_nat','date'])
 
-    x_data = ds_pre[x_vars].sortby(['seg_id_nat','date'])
+    x_data = ds_pre[x_vars]
 
     # make sure we don't have any weird input values
     check_if_finite(x_data)
@@ -332,8 +332,6 @@ def prep_data(
         lto=lto,
         lto_type = lto_type
     )
-
-
 
     y_obs = [x_data.sortby(["seg_id_nat", "date"])]
     ds = xr.open_zarr(obs_temper_file)
@@ -404,17 +402,13 @@ def prep_data(
         "y_mean": y_mean.to_array().values,
         }
 
-    ###Test to reduce redundancy
-    data['ids_pre'] = coord_as_reshaped_array(x_scl, 'seg_id_nat', offset=offset, seq_len=seq_length)
-    data['dates_pre'] = coord_as_reshaped_array(x_scl, 'date', offset=offset, seq_len=seq_length)
-
     if distfile:
-        data["dist_matrix"] = prep_adj_matrix(
-            infile=distfile,
-            dist_type=dist_type,
-            dist_idx_name=dist_idx_name,
-            #segs=segs,
-        )
+       data["dist_matrix"] = prep_adj_matrix(
+           infile=distfile,
+           dist_type=dist_type,
+           dist_idx_name=dist_idx_name,
+           #segs=segs,
+       )
 
     if out_file:
         if not os.path.exists(os.path.split(out_file)[0]):
