@@ -1,10 +1,6 @@
 import pickle
 import numpy as np
 import os
-import scipy.sparse as sp
-import torch
-from scipy.sparse import linalg
-import torch.nn as nn
 import torch.optim as optim
 from gwn.model import  *
 
@@ -69,7 +65,7 @@ class StandardScaler():
         return (data.cpu() * self.std) + self.mean
 
 
-def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=None):
+def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=None, pad = False):
     if isinstance(cat_data,str):
         cat_data = np.load(os.path.join(cat_data, 'prepped.npz'))
     data = {}
@@ -80,10 +76,10 @@ def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=N
     scaler = StandardScaler(mean = cat_data['y_mean'][0], std = cat_data['y_std'][0])
     # Data format
 
-    data['pre_train_loader'] = DataLoader(data['x_pre_train'],data['y_pre_train'], batch_size)
-    data['train_loader'] = DataLoader(data['x_train'], data['y_train'], batch_size)
-    data['val_loader'] = DataLoader(data['x_val'], data['y_val'], valid_batch_size)
-    data['test_loader'] = DataLoader(data['x_test'], data['y_test'], test_batch_size)
+    data['pre_train_loader'] = DataLoader(data['x_pre_train'],data['y_pre_train'], batch_size, pad_with_last_sample=pad)
+    data['train_loader'] = DataLoader(data['x_train'], data['y_train'], batch_size, pad_with_last_sample=pad)
+    data['val_loader'] = DataLoader(data['x_val'], data['y_val'], valid_batch_size, pad_with_last_sample=pad)
+    data['test_loader'] = DataLoader(data['x_test'], data['y_test'], test_batch_size, pad_with_last_sample=pad)
     data['scaler'] = scaler
     return data
 
@@ -151,14 +147,15 @@ def load_model(data_in,
                randomadj=False,
                n_blocks=4,
                scale_y=False,
-               load_weights=False):
+               load_weights=False,
+               pad = False):
 
     data = np.load(data_in)
     out_dim = data['y_train'].shape[1]
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     adj_mx = data['dist_matrix']
-    dataloader = load_dataset(data, batch_size, batch_size, batch_size)
+    dataloader = load_dataset(data, batch_size, batch_size, batch_size, pad)
     scaler = dataloader['scaler']
 
     supports = [torch.tensor(adj_mx).to(device).float()]
@@ -189,7 +186,7 @@ class trainer():
         #skip and end were 8 and 16 respectively
         self.model.to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lrate, weight_decay=wdecay)
-        self.loss = util.rmse #was mae
+        self.loss = rmse #was mae
         self.scaler = scaler
         self.clip = 3
         self.scale_y = scale_y
@@ -232,22 +229,21 @@ class trainer():
         predict = output
         loss = self.loss(predict, real)
         if self.scale_y:
-            #real = real.to(type=torch.float64)
-            #real = self.scaler.inverse_transform(real)
-            predict = self.scaler.inverse_transform(output.detach().cpu()).float()
-            metrics = metric(predict,real.cpu())
+            real = self.scaler.inverse_transform(real.cpu())
+            predict = self.scaler.inverse_transform(output.detach().cpu())
+            metrics = metric(predict, real)
         else:
             metrics = metric(predict,real)
         return metrics
 
-    def predict(self, partition, dataloader):
+    def predict(self, partition, dataloader,device):
         self.model.eval()
         predicted = []
         for iter, (x, y) in enumerate(dataloader[f"{partition}_loader"].get_iterator()):
             trainx = torch.Tensor(x).to(device)
             trainx = trainx.transpose(1, 3)
             with torch.no_grad():
-                output = engine.model(trainx).transpose(1, 3)
+                output = self.model(trainx)#.transpose(1, 3)
             predicted.append(output)
-        predicted = torch.cat(predicted, dim=0).squeeze()
+        predicted = torch.cat(predicted, dim=0)
         return predicted

@@ -376,6 +376,8 @@ def prep_data(
         # scale y training data and get the mean and std
         y_obs_trn, y_std, y_mean = scale(y_obs_trn)
         y_pre, _, _ = scale(y_pre, y_std, y_mean)
+        y_obs_val, _,_ = scale(y_obs_val,y_std, y_mean)
+        y_obs_tst,_,_ = scale(y_obs_tst, y_std, y_mean)
     else:
         _, y_std, y_mean = scale(y_obs_trn)
 

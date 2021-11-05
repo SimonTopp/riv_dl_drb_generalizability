@@ -4,8 +4,6 @@ import numpy as np
 import time
 import os.path
 #import matplotlib.pyplot as plt
-import gwn.engine
-from gwn.engine import trainer
 import pandas as pd
 import gwn.util as util
 import pickle
