@@ -116,7 +116,7 @@ def load_data_uq(cat_data,
         x_up, x_down, x, y_up, y_down,y, y_hat  = prep_uq_data(cat_data[f'x_{cat}'],
                                                   cat_data[f'y_{cat}'],
                                                   predictions[f'preds_{cat}'])
-        data[f'{cat}_up_loader'] = util.DataLoader(x_up,y_up, batch_size)
+        data[f'{cat}_up_loader'] = util.DataLoader(x_up, y_up, batch_size)
         data[f'{cat}_down_loader'] = util.DataLoader(x_down,y_down,batch_size)
         data[f'x_{cat}'] = x
         data[f'y_{cat}'] = y
@@ -298,15 +298,158 @@ def calc_uq(out_dir,
         print('{}, f0: {}, f1: {}, f2: {}'.format(iter, f0, f1, f2))
     c_down = c_down2
 
+    x_test = torch.Tensor(dataloader['x_test']).to(device)
+    y_hat_test = dataloader['y_hat_test']
 
-    y_up = net_up(data['x_test']).detach().cpu().numpy()#.squeeze()
-    y_down = net_down(data['x_test']).detach().cpu().numpy()#.squeeze()
+    x_val = torch.Tensor(dataloader['x_val']).to(device)
+    y_hat_val = dataloader['y_hat_val']
 
-    if scale_y:
-        ci_low = scalar.inverse_transform(y_pred_test.cpu() - c_down * y_down)
-        ci_high = scalar.inverse_transform(y_pred_test.cpu() + c_up * y_up)
+
+    y_up_test = net_up(x_test).detach().cpu().numpy().squeeze()
+    y_down_test = net_down(x_test).detach().cpu().numpy().squeeze()
+
+
+    y_up_val = net_up(x_val).detach().cpu().numpy().squeeze()
+    y_down_val = net_down(x_val).detach().cpu().numpy().squeeze()
+
+
+    ci_out = {
+        "ci_low_test": y_hat_test - c_down * y_down_test,
+        "ci_high_test": y_hat_test + c_up * y_up_test,
+        "ci_low_val": y_hat_val - c_down * y_down_val,
+        "ci_high_val": y_hat_val + c_up * y_up_val
+    }
+    outfile = os.path.join(out_dir,'conf_ints.npz')
+    np.savez_compressed(outfile, **ci_out)
+
+    return ci_out
+
+
+def combine_outputs(prepped, predictions, conf_intervals, unscale = True):
+
+    prepped = np.load(prepped)
+    predictions = np.load(predictions)
+    conf_intervals = np.load(conf_intervals)
+    out_dim = predictions['preds_val'].shape[1]
+    scaler = util.StandardScaler(mean = prepped['y_mean'][0], std = prepped['y_std'][0])
+
+    categories = ['test', 'val']
+    df_out = pd.DataFrame(columns=['date','seg_id_nat','observed','predicted', 'ci_low','ci_high','partition'])
+    for cat in categories:
+        d = {
+        "date": prepped[f'dates_{cat}'][:,-out_dim:,...].flatten(),
+        "seg_id_nat": prepped[f'ids_{cat}'][:,-out_dim:,...].flatten(),
+        "observed":prepped[f'y_{cat}'].flatten(),
+        "predicted":predictions[f'preds_{cat}'].flatten(),
+        "ci_low":conf_intervals[f'ci_low_{cat}'],
+        "ci_high":conf_intervals[f'ci_high_{cat}'],
+        }
+        df = pd.DataFrame(data = d)
+        df['partition'] = cat
+        df_out = pd.concat([df_out,df])
+    df_out.set_index('partition', inplace=True)
+    if unscale:
+        df_out[['observed','predicted', 'ci_low','ci_high']] = df_out[['observed','predicted', 'ci_low','ci_high']].apply(lambda x: scaler.inverse_transform(x))
+
+    return df_out
+
+
+def calc_metrics(df):
+    """
+    calculate metrics (e.g., rmse and nse)
+    :param df:[pd dataframe] dataframe of observations and predictions for
+    one reach. dataframe must have columns "obs" and "pred"
+    :return: [pd Series] various evaluation metrics (e.g., rmse and nse)
+    """
+    obs = df["obs"].values
+    pred = df["pred"].values
+    if len(obs) > 10:
+        metrics = {
+            "rmse": rmse(obs, pred).numpy(),
+            "nse": nse(obs, pred).numpy(),
+            "rmse_top10": percentile_metric(
+                obs, pred, rmse, 90, less_than=False
+            ).numpy(),
+            "rmse_bot10": percentile_metric(
+                obs, pred, rmse, 10, less_than=True
+            ).numpy(),
+        }
+
     else:
-        ci_low = y_pred_test - c_down * y_down
-        ci_high = y_pred_test + c_up * y_up
+        metrics = {
+            "rmse": np.nan,
+            "nse": np.nan,
+            "rmse_top10": np.nan,
+            "rmse_bot10": np.nan,
+            "rmse_logged": np.nan,
+            "nse_top10": np.nan,
+            "nse_bot10": np.nan,
+            "nse_logged": np.nan,
+            "kge": np.nan,
+        }
+    return pd.Series(metrics)
 
-    return ci_low, ci_high
+
+def partition_metrics(
+        pred_file,
+        obs_file,
+        partition,
+        spatial_idx_name="seg_id_nat",
+        time_idx_name="date",
+        group=None,
+        outfile=None
+):
+    """
+    calculate metrics for a certain group (or no group at all) for a given
+    partition and variable
+    :param pred_file: [str] path to predictions feather file
+    :param obs_file: [str] path to observations zarr file
+    :param partition: [str] data partition for which metrics are calculated
+    :param spatial_idx_name: [str] name of column that is used for spatial
+        index (e.g., 'seg_id_nat')
+    :param time_idx_name: [str] name of column that is used for temporal index
+        (usually 'time')
+    :param group: [str or list] which group the metrics should be computed for.
+    Currently only supports 'seg_id_nat' (segment-wise metrics), 'month'
+    (month-wise metrics), ['seg_id_nat', 'month'] (metrics broken out by segment
+    and month), and None (everything is left together)
+    :param outfile: [str] file where the metrics should be written
+    :return: [pd dataframe] the condensed metrics
+    """
+
+    var_metrics_list = []
+
+    for data_var, data in var_data.items():
+        data.reset_index(inplace=True)
+        if not group:
+            metrics = calc_metrics(data)
+            # need to convert to dataframe and transpose so it looks like the
+            # others
+            metrics = pd.DataFrame(metrics).T
+        elif group == "seg_id_nat":
+            metrics = data.groupby(spatial_idx_name).apply(calc_metrics).reset_index()
+        elif group == "month":
+            metrics = (
+            data.groupby(
+            data[time_idx_name].dt.month)
+            .apply(calc_metrics)
+            .reset_index()
+            )
+        elif group == ["seg_id_nat", "month"]:
+            metrics = (
+            data.groupby(
+            [data[time_idx_name].dt.month,
+            spatial_idx_name])
+            .apply(calc_metrics)
+            .reset_index()
+            )
+        else:
+            raise ValueError("group value not valid")
+
+        metrics["variable"] = data_var
+        metrics["partition"] = partition
+        var_metrics_list.append(metrics)
+        var_metrics = pd.concat(var_metrics_list)
+    if outfile:
+        var_metrics.to_csv(outfile, header=True, index=False)
+    return var_metrics

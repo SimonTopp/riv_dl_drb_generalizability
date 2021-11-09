@@ -1,6 +1,10 @@
 import pickle
+
+import numpy
 import numpy as np
 import os
+
+import torch
 import torch.optim as optim
 from gwn.model import  *
 
@@ -62,7 +66,10 @@ class StandardScaler():
         return (data - self.mean) / self.std
 
     def inverse_transform(self, data):
-        return (data.cpu() * self.std) + self.mean
+        if torch.is_tensor(data):
+            return (data.cpu() * self.std) + self.mean
+        else:
+            return (data * self.std) + self.mean
 
 
 def load_dataset(cat_data, batch_size, valid_batch_size= None, test_batch_size=None, pad = False):

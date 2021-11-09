@@ -106,7 +106,7 @@ rule calc_ci:
     output:
         config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/results.csv",
 
-
+rule combine_outputs
 
 rule viz:
     input:
