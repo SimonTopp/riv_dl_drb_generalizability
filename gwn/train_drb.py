@@ -25,7 +25,7 @@ def train(data_in,
           n_blocks=4,
           scale_y=False):
 
-    out_dir = os.path.join(out_dir, expid, f"{kernel_size}_{layer_size}")
+    out_dir = os.path.join(out_dir, expid)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"training on {device}")
 

@@ -1,3 +1,7 @@
+### Utilities for post-processing PGDL outputs.
+### Some of these functions have been taken from the River-dl repository led by Jeff Sadler
+## https://github.com/USGS-R/river-dl
+
 import time
 import torch
 import numpy as np
@@ -6,6 +10,9 @@ import pandas as pd
 import gwn.util as util
 from torch import nn
 import torch.optim as optim
+
+
+
 def predict(data_in,
             out_dir,
             batch_size=20,
@@ -17,7 +24,7 @@ def predict(data_in,
             n_blocks=4,
             scale_y=False,
             ):
-    out_dir = os.path.join(out_dir, expid, f"{kernel_size}_{layer_size}")
+    out_dir = os.path.join(out_dir, expid)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     data, dataloader, engine = util.load_model(data_in,
@@ -212,7 +219,6 @@ def train_uq(out_dir,
 def calc_uq(out_dir,
             prepped,
             preds,
-            scale_y = True,
             quantile=0.90):
     if isinstance(prepped, str):
         prepped = np.load(prepped)
@@ -325,11 +331,11 @@ def calc_uq(out_dir,
     return ci_out
 
 
-def combine_outputs(prepped, predictions, conf_intervals, unscale = True):
+def combine_outputs(out_dir, io_data, preds, ci, unscale = True, clean_prepped = False):
 
-    prepped = np.load(prepped)
-    predictions = np.load(predictions)
-    conf_intervals = np.load(conf_intervals)
+    prepped = np.load(io_data)
+    predictions = np.load(preds)
+    conf_intervals = np.load(ci)
     out_dim = predictions['preds_val'].shape[1]
     scaler = util.StandardScaler(mean = prepped['y_mean'][0], std = prepped['y_std'][0])
 
@@ -351,7 +357,51 @@ def combine_outputs(prepped, predictions, conf_intervals, unscale = True):
     if unscale:
         df_out[['observed','predicted', 'ci_low','ci_high']] = df_out[['observed','predicted', 'ci_low','ci_high']].apply(lambda x: scaler.inverse_transform(x))
 
+    if clean_prepped:
+        os.remove(io_data)
+        os.remove(preds)
+        os.remove(ci)
+    df_out = df_out.round(5)
+    df_out.to_csv(os.path.join(out_dir,'combined_results.csv'))
+
     return df_out
+'''
+def monthly_summary(df, partition):
+    df.
+'''
+## Some of these functions have
+
+def nse(y_true, y_pred):
+    y_pred = y_pred[~np.isnan(y_true)]
+    y_true = y_true[~np.isnan(y_true)]
+
+    mean = np.nanmean(y_true)
+    deviation = y_true - mean
+    error = y_pred-y_true
+    numerator = np.sum(np.square(error))
+    denominator = np.sum(np.square(deviation))
+    return 1 - numerator / denominator
+
+
+def rmse_eval(y_true, y_pred):
+    y_pred = y_pred[~np.isnan(y_true)]
+    y_true = y_true[~np.isnan(y_true)]
+    n = len(y_true)
+    sum_squared_error = np.sum(np.square(y_pred-y_true))
+    rmse = np.sqrt(sum_squared_error/n)
+    return rmse
+
+
+def piw(ci_high, ci_low):
+    piw = ci_high - ci_low
+    return np.mean(piw)
+
+def picp(ci_high,ci_low, y_true):
+    ci_low = ci_low[~np.isnan(y_true)]
+    ci_high = ci_high[~np.isnan(y_true)]
+    y_true = y_true[~np.isnan(y_true)]
+    n_in = len(y_true[(y_true > ci_low) & (y_true < ci_high)])
+    return n_in/len(y_true)
 
 
 def calc_metrics(df):
@@ -361,39 +411,30 @@ def calc_metrics(df):
     one reach. dataframe must have columns "obs" and "pred"
     :return: [pd Series] various evaluation metrics (e.g., rmse and nse)
     """
-    obs = df["obs"].values
-    pred = df["pred"].values
-    if len(obs) > 10:
-        metrics = {
-            "rmse": rmse(obs, pred).numpy(),
-            "nse": nse(obs, pred).numpy(),
-            "rmse_top10": percentile_metric(
-                obs, pred, rmse, 90, less_than=False
-            ).numpy(),
-            "rmse_bot10": percentile_metric(
-                obs, pred, rmse, 10, less_than=True
-            ).numpy(),
-        }
 
+    obs = df["observed"].values
+    pred = df["predicted"].values
+    ci_high = df['ci_high'].values
+    ci_low = df['ci_low'].values
+    if len(obs[~np.isnan(obs)]) > 10:
+        metrics = {
+            "rmse": rmse_eval(obs, pred),
+            "nse": nse(obs, pred),
+            'piw': piw(ci_high,ci_low),
+            "picp": picp(ci_high, ci_low,obs)
+        }
     else:
         metrics = {
             "rmse": np.nan,
             "nse": np.nan,
-            "rmse_top10": np.nan,
-            "rmse_bot10": np.nan,
-            "rmse_logged": np.nan,
-            "nse_top10": np.nan,
-            "nse_bot10": np.nan,
-            "nse_logged": np.nan,
-            "kge": np.nan,
+            "piw":np.nan,
+            "picp": np.nan
         }
     return pd.Series(metrics)
 
 
 def partition_metrics(
-        pred_file,
-        obs_file,
-        partition,
+        df,
         spatial_idx_name="seg_id_nat",
         time_idx_name="date",
         group=None,
@@ -416,40 +457,33 @@ def partition_metrics(
     :param outfile: [str] file where the metrics should be written
     :return: [pd dataframe] the condensed metrics
     """
-
+    if isinstance(df,str):
+        df = pd.read_csv(df).set_index('partition')
+        df.date = pd.to_datetime(df.date)
     var_metrics_list = []
-
-    for data_var, data in var_data.items():
-        data.reset_index(inplace=True)
+    for i in ['test','val']:
+        data = df.loc[i,]
         if not group:
-            metrics = calc_metrics(data)
+            metrics_overall = calc_metrics(data)
+            metrics_overall['group'] = 'Overall'
+            temps_high = calc_metrics(data.loc[data.observed > 20])
+            temps_high['group'] = 'Above20'
+            temps_low = calc_metrics(data.loc[data.observed < 10])
+            temps_low['group'] = 'Below10'
             # need to convert to dataframe and transpose so it looks like the
             # others
-            metrics = pd.DataFrame(metrics).T
+            metrics = pd.concat(pd.DataFrame(i).T for i in [metrics_overall, temps_low, temps_high])
         elif group == "seg_id_nat":
             metrics = data.groupby(spatial_idx_name).apply(calc_metrics).reset_index()
         elif group == "month":
             metrics = (
-            data.groupby(
-            data[time_idx_name].dt.month)
-            .apply(calc_metrics)
-            .reset_index()
-            )
-        elif group == ["seg_id_nat", "month"]:
-            metrics = (
-            data.groupby(
-            [data[time_idx_name].dt.month,
-            spatial_idx_name])
-            .apply(calc_metrics)
-            .reset_index()
+            data.groupby(data[time_idx_name].dt.month).apply(calc_metrics).reset_index()
             )
         else:
             raise ValueError("group value not valid")
-
-        metrics["variable"] = data_var
-        metrics["partition"] = partition
+        metrics["partition"] = i
         var_metrics_list.append(metrics)
-        var_metrics = pd.concat(var_metrics_list)
+    var_metrics = pd.concat(var_metrics_list).round(5)
     if outfile:
         var_metrics.to_csv(outfile, header=True, index=False)
     return var_metrics
