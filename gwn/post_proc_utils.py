@@ -43,10 +43,10 @@ def predict(data_in,
     #out_dim = data['y_train'].shape[1]
 
     preds = {}
-    preds['preds_pre_train'] = engine.predict('pre_train', dataloader,device)[:dataloader['y_pre_train'].shape[0],...]
-    preds['preds_train'] = engine.predict('train', dataloader, device)[:dataloader['y_train'].shape[0],...]
-    preds['preds_val'] = engine.predict('val', dataloader, device)[:dataloader['y_val'].shape[0],...]
-    preds['preds_test'] = engine.predict('test', dataloader,device)[:dataloader['y_test'].shape[0],...]
+    preds['preds_pre_train'] = engine.predict('pre_train', dataloader,device)[:dataloader['y_pre_train'].shape[0],...].detach().cpu().numpy()
+    preds['preds_train'] = engine.predict('train', dataloader, device)[:dataloader['y_train'].shape[0],...].detach().cpu().numpy()
+    preds['preds_val'] = engine.predict('val', dataloader, device)[:dataloader['y_val'].shape[0],...].detach().cpu().numpy()
+    preds['preds_test'] = engine.predict('test', dataloader,device)[:dataloader['y_test'].shape[0],...].detach().cpu().numpy()
 
 
     np.savez_compressed(os.path.join(out_dir, 'prepped_preds.npz'), **preds)

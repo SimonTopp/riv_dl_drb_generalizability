@@ -72,6 +72,8 @@ def pull_lto_years(obs, ntest = 10, nval = 5, test='max'):
     temp_df = temp_df[temp_df.date >= '1980-10-01']
 
     temp_df['water_year'] = temp_df.date.dt.year.where(temp_df.date.dt.month < 10, temp_df.date.dt.year + 1)
+    temp_df['month'] = temp_df.date.dt.month
+    temp_df = temp_df[temp_df.month.isin([6, 7, 8])]
     mean_temp = temp_df[['mean_temp_c', 'water_year']].groupby('water_year').mean()
     if test=='max':
         years_test = mean_temp.sort_values('mean_temp_c', ascending=False)[0:ntest]

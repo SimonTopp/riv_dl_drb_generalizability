@@ -7,13 +7,18 @@ from gwn.train_drb import train
 import gwn.post_proc_utils as ppu
 from gwn.util import asRunConfig
 
+subdirs = [f"repeat_{i}" for i in range(10)]
+
 rule all:
     input:
         expand("{outdir}/{subdir}/{metric_type}_metrics.csv",
             outdir=config["out_dir"],
-            subdir=config['subdir'],
+            subdir=subdirs,
             metric_type=['overall', 'month', 'reach']),
-        expand("{outdir}/asRunConfig.yml", outdir = config['out_dir'])
+        expand("{outdir}/asRunConfig.yml", outdir = config['out_dir']),
+        expand("{outdir}/{subdir}/figs/training_loss.png",
+            outdir=config["out_dir"],
+            subdir=config['subdir'])
 
 
 rule as_run_config:
@@ -22,12 +27,21 @@ rule as_run_config:
     run:
         asRunConfig(config,output[0])
 
+
+def get_llo_arg(wildcards):
+    if wildcards.subdir == 'LLO1':
+        return 1
+    elif wildcards.subdir == 'LLO2':
+        return 2
+    elif wildcards.subdir == 'LLO3':
+        return 3
+
 rule prep_io_data:
     input:
          config['obs_temp'],
          config['sntemp_file'],
     output:
-        "{outdir}/{subdir}/prepped.npz",
+        "{outdir}/prepped.npz",
     run:
         prep_data(input[0], input[1],
             x_vars=config['x_vars'],
@@ -53,13 +67,14 @@ rule prep_io_data:
 
 rule train:
     input:
-        "{outdir}/{subdir}/prepped.npz",
+        "{outdir}/prepped.npz",
     output:
         "{outdir}/{subdir}/adjmat_out.csv",
         #config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/adjmat_pre_out.csv",
         "{outdir}/{subdir}/train_log.csv",
         "{outdir}/{subdir}/weights_best_val.pth",
-
+    resources:
+        nvidia_gpu=1
     run:
         train(input[0],
             config['out_dir'],
@@ -75,10 +90,12 @@ rule train:
 
 rule predict:
     input:
-        "{outdir}/{subdir}/prepped.npz",
+        "{outdir}/prepped.npz",
         "{outdir}/{subdir}/weights_best_val.pth",
     output:
         "{outdir}/{subdir}/prepped_preds.npz",
+    resources:
+        nvidia_gpu=1
     run:
         ppu.predict(input[0],
             config['out_dir'],
@@ -92,10 +109,12 @@ rule predict:
 
 rule calc_ci:
     input:
-        "{outdir}/{subdir}/prepped.npz",
+        "{outdir}/prepped.npz",
         "{outdir}/{subdir}/prepped_preds.npz",
     output:
         "{outdir}/{subdir}/conf_ints.npz",
+    resources:
+        nvidia_gpu=1
     run:
         ppu.calc_uq(
             f"{wildcards.outdir}/{wildcards.subdir}",
@@ -106,7 +125,7 @@ rule calc_ci:
 
 rule combine_outputs:
     input:
-        "{outdir}/{subdir}/prepped.npz",
+        "{outdir}/prepped.npz",
         "{outdir}/{subdir}/prepped_preds.npz",
         "{outdir}/{subdir}/conf_ints.npz",
     output:
@@ -140,15 +159,13 @@ rule group_metrics:
         ppu.partition_metrics(input[0],
                          group=params.grp_arg,
                          outfile=output[0])
-'''
+
 rule viz:
     input:
-        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/adjmat_out.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/adjmat_pre_out.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/test_results.csv",
-        config['out_dir'] + "/{seq_length}_{offset}/{kernel_size}_{layer_size}/train_log.csv",
+        "{outdir}/{subdir}/adjmat_out.csv",
+        "{outdir}/{subdir}/combined_results.csv",
+        "{outdir}/{subdir}/train_log.csv",
     output:
-        config['out_dir']+"/{seq_length}_{offset}/{kernel_size}_{layer_size}/figs/training_loss.png",
+        "{outdir}/{subdir}/figs/training_loss.png",
     run:
-        plot_results(config['out_dir'] + f"/{wildcards.seq_length}_{wildcards.offset}/{wildcards.kernel_size}_{wildcards.layer_size}")
-'''
+        plot_results(f"{wildcards.outdir}/{wildcards.subdir}")
