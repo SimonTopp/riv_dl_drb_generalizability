@@ -14,7 +14,7 @@ def train(data_in,
           epochs=50,
           epochs_pre=25,
           early_stopping=20,
-          expid='default',
+          #expid='default',
           kernel_size=3,
           layer_size=3,
           learning_rate=0.001,
@@ -25,7 +25,7 @@ def train(data_in,
           n_blocks=4,
           scale_y=False):
 
-    out_dir = os.path.join(out_dir, expid)
+    #out_dir = os.path.join(out_dir, expid)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"training on {device}")
 

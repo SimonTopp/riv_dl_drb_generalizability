@@ -16,7 +16,7 @@ import torch.optim as optim
 def predict(data_in,
             out_dir,
             batch_size=20,
-            expid='default',
+            #expid='default',
             kernel_size=3,
             layer_size=3,
             learning_rate=0.001,
@@ -24,7 +24,7 @@ def predict(data_in,
             n_blocks=4,
             scale_y=False,
             ):
-    out_dir = os.path.join(out_dir, expid)
+    #out_dir = os.path.join(out_dir, expid)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     data, dataloader, engine = util.load_model(data_in,
@@ -60,7 +60,7 @@ def predict(data_in,
 def flatten_preds(preds):
     return preds.reshape(-1,1)
 
-def flatten_drivers(drivers, in_dim, out_dim, clip_x = False):
+def flatten_drivers(drivers, in_dim, out_dim=None, clip_x = False):
     if clip_x:
         drivers = drivers[:,-out_dim:,...]
     return drivers.reshape(-1,in_dim)
@@ -69,12 +69,17 @@ def flatten_obs(obs,out_dim):
     obs = obs[:,-out_dim:,...]
     return obs.reshape(-1,1)
 
-def prep_uq_data(x,y, y_hat):
-    in_dim = x.shape[3]
-    out_dim = y_hat.shape[1]
-    x = flatten_drivers(x, in_dim,out_dim,clip_x=True)
-    y_hat= flatten_preds(y_hat).squeeze()
-    y = flatten_obs(y,out_dim).squeeze()
+def prep_uq_data(x,y, y_hat, rdl=False):
+    if not rdl:
+        in_dim = x.shape[3]
+        out_dim = y_hat.shape[1]
+        x = flatten_drivers(x, in_dim,out_dim,clip_x=True)
+    if rdl:
+        in_dim = x.shape[2]
+        out_dim = y_hat.shape[1]
+        x = flatten_drivers(x,in_dim)
+    y_hat = flatten_preds(y_hat).squeeze()
+    y = flatten_obs(y, out_dim).squeeze()
     residuals = y-y_hat
     x_up = x[residuals > 0]
     x_down = x[residuals < 0]
@@ -89,7 +94,7 @@ class UQ_Net_std(nn.Module):
         super(UQ_Net_std, self).__init__()
         self.fc1 = nn.Linear(len_x, 200)
         self.fc2 = nn.Linear(200, 1)
-        self.fc2.bias = torch.nn.Parameter(torch.tensor([10.0]))
+        self.fc2.bias = torch.nn.Parameter(torch.tensor([15.0]))
 
 
     def forward(self, x):
@@ -107,8 +112,8 @@ class UQ_Net_std(nn.Module):
 
 def load_data_uq(cat_data,
                  predictions,
-                 batch_size
-                 ):
+                 batch_size,
+                 rdl = False):
 
     if isinstance(cat_data,str):
         cat_data = np.load(os.path.join(cat_data, 'prepped.npz'))
@@ -122,7 +127,8 @@ def load_data_uq(cat_data,
     for cat in categories:
         x_up, x_down, x, y_up, y_down,y, y_hat  = prep_uq_data(cat_data[f'x_{cat}'],
                                                   cat_data[f'y_{cat}'],
-                                                  predictions[f'preds_{cat}'])
+                                                  predictions[f'preds_{cat}'],
+                                                               rdl = rdl)
         data[f'{cat}_up_loader'] = util.DataLoader(x_up, y_up, batch_size)
         data[f'{cat}_down_loader'] = util.DataLoader(x_down,y_down,batch_size)
         data[f'x_{cat}'] = x
@@ -139,7 +145,7 @@ def train_uq(out_dir,
              epochs_pre,
              epochs,
              weights=None,
-             early_stopping=20,
+             early_stopping=25,
              ):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -219,22 +225,27 @@ def train_uq(out_dir,
 def calc_uq(out_dir,
             prepped,
             preds,
-            quantile=0.90):
+            quantile=0.90,
+            rdl = False):
+
     if isinstance(prepped, str):
         prepped = np.load(prepped)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    len_x=prepped['x_train'].shape[3]
+    if rdl:
+        len_x=prepped['x_train'].shape[-1]
+    else:
+        len_x = prepped['x_train'].shape[3]
 
-    dataloader = load_data_uq(prepped, preds, 500)
+    dataloader = load_data_uq(prepped, preds, 500, rdl)
 
     net_up = UQ_Net_std(len_x).to(device)
 
-    net_up = train_uq(out_dir, net_up, 'up', dataloader, 50, 200)
+    net_up = train_uq(out_dir, net_up, 'up', dataloader, 10, 200)
 
     net_down = UQ_Net_std(len_x).to(device)
 
-    net_down = train_uq(out_dir, net_down, 'down', dataloader, 50, 200)
+    net_down = train_uq(out_dir, net_down, 'down', dataloader, 10, 200)
 
     # ------------------------------------------------------
     # Determine how to move the upper and lower bounds
@@ -357,10 +368,15 @@ def combine_outputs(out_dir, io_data, preds, ci, unscale = True, clean_prepped =
     if unscale:
         df_out[['observed','predicted', 'ci_low','ci_high']] = df_out[['observed','predicted', 'ci_low','ci_high']].apply(lambda x: scaler.inverse_transform(x))
 
-    if clean_prepped:
+    if clean_prepped == 'full':
         os.remove(io_data)
         os.remove(preds)
         os.remove(ci)
+
+    if clean_prepped == 'partial':
+        os.remove(preds)
+        os.remove(ci)
+
     df_out = df_out.round(5)
     df_out.to_csv(os.path.join(out_dir,'combined_results.csv'))
 
