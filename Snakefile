@@ -8,8 +8,8 @@ from gwn.train_drb import train
 import gwn.post_proc_utils as ppu
 from gwn.util import asRunConfig
 
-subdirs = ['max', 'min']
-ensemble = [f"_{i}" for i in np.arange(2)]
+subdirs = ['LLO1', 'LLO2', 'LLO3']
+ensemble = [f"_{i}" for i in np.arange(10)]
 
 rule all:
     input:
@@ -63,6 +63,8 @@ rule prep_io_data:
         "{outdir}/{subdir}/prepped.npz",
     #group: "prep"
     threads: 3
+    params:
+        llo_group=get_llo_arg
     run:
         prep_data(input[0],input[1],
             x_vars=config['x_vars'],
@@ -81,8 +83,8 @@ rule prep_io_data:
             dist_type=config['dist_type'],
             clip_y=config['clip_y'],
             lto=config['lto'],
-            lto_type=wildcards.subdir,
-            llo=config['llo'],
+            lto_type=config['lto_type'], # wildcards.subdir,
+            llo=params.llo_group,
             test_group=config['test_group'],
         )
 

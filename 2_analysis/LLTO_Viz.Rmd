@@ -330,10 +330,40 @@ baseline <- summary_results('data/out/repeat_2/','baseline')
 
 
 llo <- list(llo1,llo2,llo3) %>% pmap(bind_rows)
-seg_plotter_sf(llo$segs %>% filter(!is.na(piw), partition == 'test'), 'picp')# +
+seg_plotter_sf(llo$segs %>% filter(!is.na(piw), partition == 'test'), 'rmse')# +
   scale_color_viridis_c(option = 'inferno', direction = -1, limits= c(0,18))
 
 llo$segs %>% filter(!is.na(picp), partition == 'test') %>% summarise(mean = median(picp))
 ```
 
+## Put together some utilities to comine replicate runs into summary outputs
+```{r}
+combine_replicates = function(folder, pattern){
+  files <- list.files(folder, pattern='overall_metrics', recursive=T, full.names=T)
+  
+  for(i in c(1:length(files))){
+    if(i == 1){
+      df <- read_csv(files[i]) %>% mutate(replicate = i)
+    }
+    else{df <- df %>% bind_rows(read_csv(files[i]) %>% mutate(replicate = i))
+    }
+  }
+  
+   df <- df %>% group_by(partition, date, seg_id_nat, replicate) %>%
+     summarise()
+  
+  outputs_list <- files %>% map(~read_csv(.) %>% select(observed, predicted, ci_low, ci_high) %>% mutate())
+  
+  means <- outputs_list %>% pmap(reduce, mean, na.rm=T)
+}
+
+
+ggplot(df, aes(x=nse)) + geom_histogram() + 
+  geom_vline(aes(xintercept = mean(nse))) +
+  facet_wrap(~group)
+
+df %>% group_by(group, partition) %>%
+  select(-replicate) %>%
+  summarise(across(everything(),list(mean = mean, sd = sd),.names= "{.col}.{fn}"))
+```
 
