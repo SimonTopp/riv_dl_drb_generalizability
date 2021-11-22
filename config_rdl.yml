@@ -1,0 +1,52 @@
+# Input files
+  # obs_flow: "data/in/flow_observations_drb_Christiana_no3558"
+
+out_dir: '../river-dl/data/out/rdl'
+subdir: 'test'
+code_dir: "gwn"
+clean_prepped: 'partial'
+early_stopping: 20
+
+## Possible Xvars
+## seg_ccov (cloud cover), seg_humid (humidity), seg_outlflow (streamflow out), seg_rain (rainfall), seg_shade (shade_fraction),
+## seg_tave_air (air temp), seg_tave_gw (gw temp), seg_tave_sroff (surface runoff temp), seg_tave_upstream (upstream temp), seg_tave_water (water temp),
+## seg_upstream_inflow, seg_width, seg_inc_gwflow (groundwater flow), seg_potet (potential ET), seg_sroff (surface runoff), seg_ssflow
+## (interflow), seginc_sward (solar radiation), seg_length (length of segment), seg_slope, seg_elev, "seg_shade"
+
+x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", "seginc_potet", "seg_slope", "seg_humid", "seg_elev"]
+  # y_vars: ['seg_tave_water']
+
+seq_length: 60
+batch_size: 5
+epochs: 2
+epochs_pre: 1
+kernel_size: 6
+layer_size: 2
+learning_rate: 0.0005
+offset: 15
+scale_y: True
+clip_y: True
+uq_quant: 0.9
+
+train_start_date:
+  - '1985-10-01'
+  - '2016-10-01'
+train_end_date:
+  - '2006-09-30'
+  - '2020-09-30'
+val_start_date: '2006-10-01'
+val_end_date: '2011-09-30'
+test_start_date:
+  - '1980-10-01'
+  - '2011-10-01'
+  - '2020-10-01'
+test_end_date:
+  - '1985-09-30'
+  - '2016-09-30'
+  - '2021-09-30'
+
+## For min/max temp year tests
+lto: False
+lto_type: 'min'
+llo: False
+test_group: 1
