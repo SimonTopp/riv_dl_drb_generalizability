@@ -262,9 +262,9 @@ seg_char_dist(segs[5])
 ### Check out reservoir impacts
 
 ```{r}
-seg_atts <- read_feather('../data/in/DRB_spatial/combined_seg_attr_02.feather')
+seg_atts <- read_feather('data/in/DRB_spatial/combined_seg_attr_02.feather')
 
-res_info <- readRDS('../data/in/DRB_spatial/segments_relative_to_reservoirs.rds')  %>%
+res_info <- readRDS('data/in/DRB_spatial/segments_relative_to_reservoirs.rds')  %>%
   filter(seg_id_nat != 3558)
 
 f <- function(x,y) ifelse(x==1 & y==1, 1, (x-y)^2)
@@ -286,7 +286,8 @@ ggplot(m, aes(x = Var2, y = -Var1)) +
 ids <- unique(res_info$type_res)
 #map(ids[1:2], sim_plotter)
 
-adj <- read_csv('../data/out/off_test/60_10/adjmat_out.csv')
+adj <- read_csv('data/out/repeat_2/adjmat_out.csv')
+#adj <- read_csv('../data/out/off_test/60_10/adjmat_out.csv')
 #adj <- read_csv('../data/out/60_0.25_ud_dist/adjmat_out.csv')
 
 sim_plotter_masked <- function(i, adj){
@@ -295,7 +296,7 @@ sim_plotter_masked <- function(i, adj){
   m <- as.matrix(proxy::dist(dist$cat, f))
 
   p1 <- as.matrix(adj) %>% reshape2::melt(.) %>%
-    filter(Var1 <50, Var2 <50) %>%
+    #filter(Var1 <50, Var2 <50) %>%
     ggplot(aes(x=Var2, y = Var1)) +
     geom_raster(aes(fill = value)) +
     scale_fill_viridis_c(option='magma') +
@@ -308,7 +309,7 @@ sim_plotter_masked <- function(i, adj){
   masked[m==0] <- NA
 
   p2 <- masked %>% reshape2::melt(.) %>%
-  filter(Var1 <50, Var2 <50) %>%
+  #filter(Var1 <50, Var2 <50) %>%
   ggplot(aes(x = Var2, y = Var1)) + 
   geom_raster(aes(fill=value)) + 
   scale_fill_viridis_c(option='magma') +
@@ -373,11 +374,11 @@ ggplot(res_summ) +
 ## Messing around with the adjacency matrix
 
 ```{r, include=F, eval=F, echo=FALSE}
-dist <- read_csv('../data/in/distance_matrix_drb.csv')
+dist <- read_csv('data/in/distance_matrix_drb.csv') %>% filter(from != 3558)
 
 seg_id_indexes <- dist$from
-
-adp_adj <- read_csv(paste0('../data/out/',id,'/adjmat_out.csv'), show_col_types = FALSE) %>% as.matrix(.)
+id <- 'repeat_2'
+adp_adj <- read_csv(paste0('data/out/',id,'/adjmat_out.csv'), show_col_types = FALSE) %>% as.matrix(.)
 dimnames(adp_adj) <- list(seg_id_indexes,seg_id_indexes)
 adp_adj <- as.data.frame(as.table(adp_adj))
 

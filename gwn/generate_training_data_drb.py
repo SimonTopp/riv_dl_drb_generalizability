@@ -72,6 +72,8 @@ def pull_lto_years(obs, ntest = 10, nval = 5, test='max'):
     temp_df = temp_df[temp_df.date >= '1980-10-01']
 
     temp_df['water_year'] = temp_df.date.dt.year.where(temp_df.date.dt.month < 10, temp_df.date.dt.year + 1)
+    temp_df['month'] = temp_df.date.dt.month
+    temp_df = temp_df[temp_df.month.isin([6, 7, 8])]
     mean_temp = temp_df[['mean_temp_c', 'water_year']].groupby('water_year').mean()
     if test=='max':
         years_test = mean_temp.sort_values('mean_temp_c', ascending=False)[0:ntest]
@@ -179,81 +181,8 @@ def split_into_batches(data_array, seq_len=365, offset=1):
         batch = data_array[:,idx-seq_len:idx,...]
         combined.append(batch)
     combined = [b for b in combined if b.shape[1]==seq_len]
-
-    '''
-    combined = []
-    i = 0
-    start = int(i * offset * seq_len)
-    while start < seq_len:
-        idx = np.arange(start=start, stop=data_array.shape[1] + 1, step=seq_len)
-        split = np.split(data_array, indices_or_sections=idx, axis=1)
-        # add all but the first and last batch since they will be smaller
-        combined.extend([s for s in split if s.shape[1] == seq_len])
-        i += 1
-        start = int(i * offset * seq_len)
-   
-    for i in range(int(1 / offset)+1):
-        while start < seq_len:
-        start = int(i * offset * seq_len)
-
-            idx = np.arange(start=start, stop=data_array.shape[1] + 1, step=seq_len)
-            split = np.split(data_array, indices_or_sections=idx, axis=1)
-        # add all but the first and last batch since they will be smaller
-            combined.extend([s for s in split if s.shape[1] == seq_len])
-    '''
     combined = np.asarray(combined)
     return combined
-
-
-def read_multiple_obs(obs_files, x_data):
-    """
-    read and format multiple observation files. we read in the pretrain data to
-    make sure we have the same indexing.
-    :param obs_files: [list] list of filenames of observation files
-    :param pre_train_file: [str] the file of pre_training data
-    :return: [xr dataset] the observations in the same time
-    """
-    obs = [x_data.sortby(["seg_id_nat", "date"])]
-    for filename in obs_files:
-        ds = xr.open_zarr(filename)
-        obs.append(ds)
-        if "site_id" in ds.variables:
-            del ds["site_id"]
-    obs = xr.merge(obs, join="left")
-    obs = obs[["temp_c", "discharge_cms"]]
-    obs = obs.rename(
-        {"temp_c": "seg_tave_water", "discharge_cms": "seg_outflow"}
-    )
-    return obs
-
-
-def reshape_for_training(data):
-    """
-    reshape the data for training
-    :param data: training data (either x or y or mask) dims: [nbatch, nseg,
-    len_seq, nfeat/nout]
-    :return: reshaped data [nbatch * nseg, len_seq, nfeat/nout]
-    """
-    n_batch, n_seg, seq_len, n_feat = data.shape
-    return np.reshape(data, [n_batch * n_seg, seq_len, n_feat])
-
-
-def get_exclude_start_end(exclude_grp):
-    """
-    get the start and end dates for the exclude group
-    :param exclude_grp: [dict] dictionary representing the exclude group from
-    the exclude yml file
-    :return: [tuple of datetime objects] start date, end date
-    """
-    start = exclude_grp.get("start_date")
-    if start:
-        start = datetime.datetime.strptime(start, "%Y-%m-%d")
-
-    end = exclude_grp.get("end_date")
-    if end:
-        end = datetime.datetime.strptime(end, "%Y-%m-%d")
-    return start, end
-
 
 
 def convert_batch_reshape(dataset, seq_len=365, offset=1, y = False):
@@ -318,7 +247,7 @@ def check_if_finite(xarr):
 
 def prep_data(
     obs_temper_file,
-    obs_flow_file,
+    #obs_flow_file,
     pretrain_file,
     train_start_date,
     train_end_date,
@@ -327,7 +256,7 @@ def prep_data(
     test_start_date,
     test_end_date,
     x_vars=None,
-    y_vars= ["seg_tave_water", "seg_outflow"],
+    #y_vars= ["seg_tave_water", "seg_outflow"],
     seq_length = 365,
     offset = 1,
     distfile=None,
@@ -386,14 +315,16 @@ def prep_data(
             'dates_ids_tst: un-batched dates and national seg ids for testing
                             data [n_yrs, n_seg, len_seq, 2]
     """
-    ds_pre = xr.open_zarr(pretrain_file)
+    ds_pre = xr.open_zarr(pretrain_file).sortby(['seg_id_nat','date'])
 
     x_data = ds_pre[x_vars]
 
     # make sure we don't have any weird input values
     check_if_finite(x_data)
+    x_scl, x_std, x_mean = scale(x_data)
+
     x_trn, x_val, x_tst = separate_trn_tst(
-        x_data,
+        x_scl, #x_data,
         train_start_date,
         train_end_date,
         val_start_date,
@@ -404,16 +335,17 @@ def prep_data(
         lto_type = lto_type
     )
 
-    x_scl, x_std, x_mean = scale(x_data)
+    y_obs = [x_data.sortby(["seg_id_nat", "date"])]
+    ds = xr.open_zarr(obs_temper_file)
+    y_obs.append(ds)
+    if "site_id" in ds.variables:
+        del ds["site_id"]
+    y_obs = xr.merge(y_obs, join="left")
+    y_obs = y_obs[["temp_c"]].rename({'temp_c':'seg_tave_water'})
 
-    x_trn_scl, _, _ = scale(x_trn, std=x_std, mean=x_mean)
-    x_val_scl, _, _ = scale(x_val, std=x_std, mean=x_mean)
-    x_tst_scl, _, _ = scale(x_tst, std=x_std, mean=x_mean)
+    y_pre = ds_pre[['seg_tave_water']]
 
-    y_obs = read_multiple_obs([obs_temper_file, obs_flow_file], x_data)
-    y_obs = y_obs[y_vars]
-    y_pre = ds_pre[y_vars]
-    y_pre['seg_tave_water'].values = np.where(y_pre['seg_tave_water'].values < -10, np.nan, y_pre['seg_tave_water'].values)
+    y_pre = xr.where(y_pre < -10, np.nan, y_pre)
 
     y_obs_trn, y_obs_val, y_obs_tst = separate_trn_tst(
         y_obs,
@@ -428,6 +360,7 @@ def prep_data(
         llo=llo,
         test_group=test_group,
     )
+    '''
     y_pre_trn, y_pre_val, y_pre_tst = separate_trn_tst(
         y_pre,
         train_start_date,
@@ -439,18 +372,22 @@ def prep_data(
         lto=lto,
         lto_type=lto_type
     )
+    '''
 
     if normalize_y:
         # scale y training data and get the mean and std
         y_obs_trn, y_std, y_mean = scale(y_obs_trn)
-        y_pre_trn, _, _ = scale(y_pre_trn, y_std, y_mean)
+        y_pre, _, _ = scale(y_pre, y_std, y_mean)
+        y_obs_val, _,_ = scale(y_obs_val,y_std, y_mean)
+        y_obs_tst,_,_ = scale(y_obs_tst, y_std, y_mean)
     else:
         _, y_std, y_mean = scale(y_obs_trn)
 
     data = {
-        "x_train": convert_batch_reshape(x_trn_scl, offset=offset, seq_len=seq_length),
-        "x_val": convert_batch_reshape(x_val_scl, offset=offset, seq_len=seq_length),
-        "x_test": convert_batch_reshape(x_tst_scl, offset=offset, seq_len=seq_length),
+        "x_pre_train": convert_batch_reshape(x_scl, offset=offset, seq_len=seq_length),
+        "x_train": convert_batch_reshape(x_trn, offset=offset, seq_len=seq_length),
+        "x_val": convert_batch_reshape(x_val, offset=offset, seq_len=seq_length),
+        "x_test": convert_batch_reshape(x_tst, offset=offset, seq_len=seq_length),
         "x_std": x_std.to_array().values,
         "x_mean": x_mean.to_array().values,
         "x_cols": np.array(x_vars),
@@ -460,25 +397,22 @@ def prep_data(
         "dates_val": coord_as_reshaped_array(x_val, "date", offset=offset, seq_len=seq_length),
         "ids_test": coord_as_reshaped_array(x_tst, "seg_id_nat", offset=offset, seq_len=seq_length),
         "dates_test": coord_as_reshaped_array(x_tst, "date", offset=offset, seq_len=seq_length),
-        "y_pre_train": convert_batch_reshape(y_pre_trn, offset=offset, seq_len=seq_length, y=clip_y),
+        "y_pre_train": convert_batch_reshape(y_pre, offset=offset, seq_len=seq_length, y=clip_y),
         "y_train": convert_batch_reshape(y_obs_trn, offset=offset, seq_len=seq_length, y=clip_y),
         "y_val": convert_batch_reshape(y_obs_val, offset=offset, seq_len=seq_length, y=clip_y),
         "y_test": convert_batch_reshape(y_obs_tst, offset=offset, seq_len=seq_length, y=clip_y),
-        "y_vars": np.array(y_vars),
         'offset': np.array([offset]),
-        'y_pre_train_val': convert_batch_reshape(y_pre_val, offset=offset, seq_len=seq_length, y=clip_y),
-        'y_pre_train_test': convert_batch_reshape(y_pre_tst, offset=offset, seq_len=seq_length, y=clip_y),
         "y_std": y_std.to_array().values,
         "y_mean": y_mean.to_array().values,
         }
 
     if distfile:
-        data["dist_matrix"] = prep_adj_matrix(
-            infile=distfile,
-            dist_type=dist_type,
-            dist_idx_name=dist_idx_name,
-            #segs=segs,
-        )
+       data["dist_matrix"] = prep_adj_matrix(
+           infile=distfile,
+           dist_type=dist_type,
+           dist_idx_name=dist_idx_name,
+           #segs=segs,
+       )
 
     if out_file:
         if not os.path.exists(os.path.split(out_file)[0]):

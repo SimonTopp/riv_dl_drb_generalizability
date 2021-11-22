@@ -168,7 +168,7 @@ rgcn_stats$temps %>% bind_rows(rgcn_lto$temps) %>%
 
 
 ```{r}
-llo_groups <- read_csv('../data/in/DRB_spatial/llo_groups.csv')
+llo_groups <- read_csv('data/in/DRB_spatial/llo_groups.csv')
 
 rgcn_llo <- summary_stats('../data/rgcn_out/llo', 'rgcn', llo = T)
 rgcn_llo <- pmap(rgcn_llo, bind_rows)
@@ -309,4 +309,61 @@ gridExtra::grid.arrange(p1,p2, p3,p4, layout_matrix = layout) #nrow = 2, widths 
 
 ```
 
+
+
+##### New output format figs
+
+```{r}
+summary_results <- function(folder, id){
+    files <- list.files(folder, full.names = T) 
+    segs <- read_csv(grep('reach', files, value = T))%>% mutate(run = id)
+    months <- read_csv(grep('month',files, value=T))%>% mutate(run = id)
+    temps <- read_csv(grep('overall',files,value=T))%>% mutate(run = id)
+    
+    return(mget(c('segs', 'months','temps')))
+}
+
+llo1 <- summary_results('data/out/llo/LLO1/', 'group_1')
+llo2 <- summary_results('data/out/llo/LLO2/', 'group_2')
+llo3 <- summary_results('data/out/llo/LLO3/', 'group_3')
+baseline <- summary_results('data/out/repeat_2/','baseline')
+
+
+llo <- list(llo1,llo2,llo3) %>% pmap(bind_rows)
+seg_plotter_sf(llo$segs %>% filter(!is.na(piw), partition == 'test'), 'rmse')# +
+  scale_color_viridis_c(option = 'inferno', direction = -1, limits= c(0,18))
+
+llo$segs %>% filter(!is.na(picp), partition == 'test') %>% summarise(mean = median(picp))
+```
+
+## Put together some utilities to comine replicate runs into summary outputs
+```{r}
+combine_replicates = function(folder, pattern){
+  files <- list.files(folder, pattern='overall_metrics', recursive=T, full.names=T)
+  
+  for(i in c(1:length(files))){
+    if(i == 1){
+      df <- read_csv(files[i]) %>% mutate(replicate = i)
+    }
+    else{df <- df %>% bind_rows(read_csv(files[i]) %>% mutate(replicate = i))
+    }
+  }
+  
+   df <- df %>% group_by(partition, date, seg_id_nat, replicate) %>%
+     summarise()
+  
+  outputs_list <- files %>% map(~read_csv(.) %>% select(observed, predicted, ci_low, ci_high) %>% mutate())
+  
+  means <- outputs_list %>% pmap(reduce, mean, na.rm=T)
+}
+
+
+ggplot(df, aes(x=nse)) + geom_histogram() + 
+  geom_vline(aes(xintercept = mean(nse))) +
+  facet_wrap(~group)
+
+df %>% group_by(group, partition) %>%
+  select(-replicate) %>%
+  summarise(across(everything(),list(mean = mean, sd = sd),.names= "{.col}.{fn}"))
+```
 
