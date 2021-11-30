@@ -1,7 +1,7 @@
 # Input files
   # obs_flow: "data/in/flow_observations_drb_Christiana_no3558"
 
-out_dir: '../river-dl/data/out/rdl'
+out_dir: '../river-dl/data/out/baseline'
 subdir: 'test'
 code_dir: "gwn"
 clean_prepped: 'partial'

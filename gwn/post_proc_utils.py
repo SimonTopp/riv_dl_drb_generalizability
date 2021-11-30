@@ -260,9 +260,11 @@ def calc_uq(out_dir,
     num_outlier = int(ytrain.shape[0] * (1 - quantile) / 2)
 
     net_up.eval()
-    output_up = net_up(x_train)
+    with torch.no_grad():
+        output_up = net_up(x_train)
     net_down.eval()
-    output_down = net_down(x_train)
+    with torch.no_grad():
+        output_down = net_down(x_train)
 
     c_up0 = 0.0
     c_up1 = 10.0
@@ -321,13 +323,11 @@ def calc_uq(out_dir,
     x_val = torch.Tensor(dataloader['x_val']).to(device)
     y_hat_val = dataloader['y_hat_val']
 
-
-    y_up_test = net_up(x_test).detach().cpu().numpy().squeeze()
-    y_down_test = net_down(x_test).detach().cpu().numpy().squeeze()
-
-
-    y_up_val = net_up(x_val).detach().cpu().numpy().squeeze()
-    y_down_val = net_down(x_val).detach().cpu().numpy().squeeze()
+    with torch.no_grad():
+        y_up_test = net_up(x_test).detach().cpu().numpy().squeeze()
+        y_down_test = net_down(x_test).detach().cpu().numpy().squeeze()
+        y_up_val = net_up(x_val).detach().cpu().numpy().squeeze()
+        y_down_val = net_down(x_val).detach().cpu().numpy().squeeze()
 
 
     ci_out = {
