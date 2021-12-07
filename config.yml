@@ -5,10 +5,10 @@ sntemp_file: "data/in/sntemp_inputs_outputs_drb_full_no3558"
 dist_file: 'data/in/distance_matrix_drb_full_no3558.npz'
 dist_type: 'updown'
 
-out_dir: 'data/out/LLO_ensemble'
+out_dir: 'data/out/ci_grid_search'
 subdir: ['repeats']
 code_dir: "gwn"
-clean_prepped: 'partial'
+clean_prepped: False
 early_stopping: 20
 
 ## Possible Xvars
@@ -22,8 +22,8 @@ x_vars: ["seg_rain", "seg_tave_air", "seginc_swrad", "seg_width", "seg_length", 
 
 seq_length: 60
 batch_size: 5
-epochs: 2
-epochs_pre: 1
+epochs: 100
+epochs_pre: 100
 kernel_size: 6
 layer_size: 2
 learning_rate: 0.0005
@@ -51,4 +51,4 @@ test_end_date:
 lto: False
 lto_type: 'min'
 llo: True
-test_group: 1
+test_group: 2

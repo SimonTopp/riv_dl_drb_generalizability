@@ -144,11 +144,19 @@ def train_uq(out_dir,
              dataloader,
              epochs_pre,
              epochs,
-             weights=None,
              early_stopping=25,
+             weights=None,
              ):
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.is_available():
+        os.system('module load analytics cuda10.1/toolkit/10.1.105')
+        device = 'cuda'
+        print('Training on GPU')
+    else:
+        device = 'cpu'
+        print('Training on CPU')
+
+    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     if weights:
         model.load_state_dict(weights)
@@ -226,7 +234,10 @@ def calc_uq(out_dir,
             prepped,
             preds,
             quantile=0.90,
-            rdl = False):
+            rdl = False,
+            pretrain_epochs=15,
+            early_stopping=10,
+            out_file='conf_ints.npz'):
 
     if isinstance(prepped, str):
         prepped = np.load(prepped)
@@ -241,11 +252,11 @@ def calc_uq(out_dir,
 
     net_up = UQ_Net_std(len_x).to(device)
 
-    net_up = train_uq(out_dir, net_up, 'up', dataloader, 10, 200)
+    net_up = train_uq(out_dir, net_up, 'up', dataloader, pretrain_epochs, 200, early_stopping)
 
     net_down = UQ_Net_std(len_x).to(device)
 
-    net_down = train_uq(out_dir, net_down, 'down', dataloader, 10, 200)
+    net_down = train_uq(out_dir, net_down, 'down', dataloader, pretrain_epochs, 200, early_stopping)
 
     # ------------------------------------------------------
     # Determine how to move the upper and lower bounds
@@ -336,13 +347,13 @@ def calc_uq(out_dir,
         "ci_low_val": y_hat_val - c_down * y_down_val,
         "ci_high_val": y_hat_val + c_up * y_up_val
     }
-    outfile = os.path.join(out_dir,'conf_ints.npz')
+    outfile = os.path.join(out_dir,out_file)
     np.savez_compressed(outfile, **ci_out)
 
     return ci_out
 
 
-def combine_outputs(out_dir, io_data, preds, ci, unscale = True, clean_prepped = False):
+def combine_outputs(out_dir, io_data, preds, ci, unscale = True, clean_prepped = False, out_file = 'combined_results.csv'):
 
     prepped = np.load(io_data)
     predictions = np.load(preds)
@@ -378,7 +389,7 @@ def combine_outputs(out_dir, io_data, preds, ci, unscale = True, clean_prepped =
         os.remove(ci)
 
     df_out = df_out.round(5)
-    df_out.to_csv(os.path.join(out_dir,'combined_results.csv'))
+    df_out.to_csv(os.path.join(out_dir,out_file))
 
     return df_out
 '''
