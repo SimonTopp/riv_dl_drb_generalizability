@@ -480,6 +480,77 @@ ggplot(pi, aes(x = rmse, y = picp)) +
 ```
 
 
+### PI3NN Sensitivity to pre training and early stopping    
+```{r}
+metrics <- c('overall_metrics','month_metrics','reach_metrics')
+
+pinn_grid <- metrics %>% map(~pinsploder('data/out/ci_grid_search',.))
+names(pinn_grid) <- c('overall', 'month', 'segs')
+
+p1 <- ggplot(pinn_grid$segs, aes(x = picp, y = early_stopping, fill = early_stopping)) +
+  geom_density_ridges(
+    quantile_lines = TRUE, quantiles = .5, scale = 2, alpha = 0.7,
+    vline_size = 1) +
+  theme(legend.position = 'none')+
+  geom_vline(aes(xintercept = .9), color = 'red') +
+  facet_grid(partition~pt_epochs) +
+  ggtitle('PI Coverage Probability')
+
+p2 <- ggplot(pinn_grid$segs, aes(x = piw, y = early_stopping, fill = early_stopping)) +
+  geom_density_ridges(
+    quantile_lines = TRUE, quantiles = .5, scale = 2, alpha = 0.7,
+    vline_size = 1) +
+  theme(legend.position = 'none')+
+  facet_grid(partition~pt_epochs) +
+  ggtitle('Prediction interval width')
+
+g <- gridExtra::grid.arrange(p1, p2, nrow = 2)
+
+ggsave('2_analysis/figures/ci_grid_segs.png', plot = g,width = 7, height = 5, units='in')
+
+p1 <- ggplot(pinn_grid$overall, aes(x=pt_epochs, y = early_stopping, fill = picp)) +
+  geom_raster() +
+  geom_text(aes(label=round(picp,2))) +
+  scale_fill_gradient2(midpoint = .9) +
+  theme(legend.position = 'bottom') +
+  facet_grid(group~partition) +
+  ggtitle('PI Coverage Probability')
+
+p2 <- ggplot(pinn_grid$overall, aes(x=pt_epochs, y = early_stopping, fill = piw)) +
+  geom_raster() +
+  geom_text(aes(label=round(piw,2))) +
+  scale_fill_viridis_c() +
+  theme(legend.position = 'bottom') +
+  facet_grid(group~partition) +
+  ggtitle('Prediction interval width')
+
+g <- gridExtra::grid.arrange(p1,p2, nrow = 1)
+
+ggsave('2_analysis/figures/ci_grid_temps.png', plot = g,width = 10, height = 9, units='in')
+
+
+ p1 <- ggplot(pinn_grid$month, aes(x=pt_epochs, y = early_stopping, fill = picp)) +
+  geom_raster() +
+  geom_text(aes(label=round(picp,2))) +
+  scale_fill_gradient2(midpoint = .9) +
+  facet_grid(date~partition) +
+  ggtitle('PI Coverage Probability')
+
+
+p2 <- ggplot(pinn_grid$month, aes(x=pt_epochs, y = early_stopping, fill = piw)) +
+  geom_raster() +
+  geom_text(aes(label=round(piw,2))) +
+  scale_fill_viridis_c() +
+  facet_grid(date~partition) +
+  ggtitle('Prediction interval width')
+
+g <- gridExtra::grid.arrange(p1,p2, nrow = 1)
+ggsave('2_analysis/figures/ci_grid_months.png', plot = g,width = 10, height = 15, units='in')
+```
+
+
+
+
 ## Make some plots that show change in segment RMSE as 
 
 ```{r pressure, echo=FALSE}
