@@ -10,7 +10,7 @@ import pandas as pd
 import gwn.util as util
 from torch import nn
 import torch.optim as optim
-
+from gwn.model import gwnet
 
 
 def predict(data_in,
@@ -68,7 +68,7 @@ def flatten_drivers(drivers, in_dim, out_dim=None, clip_x = False):
 def flatten_obs(obs,out_dim):
     obs = obs[:,-out_dim:,...]
     return obs.reshape(-1,1)
-
+'''
 def prep_uq_data(x,y, y_hat, rdl=False):
     if not rdl:
         in_dim = x.shape[3]
@@ -87,13 +87,22 @@ def prep_uq_data(x,y, y_hat, rdl=False):
     y_down = -1.0 * residuals[residuals<0]
     return x_up,x_down,x, y_up, y_down, y, y_hat
 
+'''
+def prep_uq_data(x,y,y_hat, rdl=False):
+    residuals=y-y_hat
+    y_up = np.where(residuals > 0, residuals, np.nan)
+    y_down = np.where(residuals < 0, residuals, np.nan)
+    print(f"Count y up = {sum(~np.isnan(y_up).flatten())}")
+    print(f"Count y down = {sum(~np.isnan(y_down).flatten())}")
+    x_up, x_down = (x,x)
+    return x_up,x_down,x, y_up, y_down, y, y_hat
 
 class UQ_Net_std(nn.Module):
 
-    def __init__(self,len_x):
+    def __init__(self,size_in):
         super(UQ_Net_std, self).__init__()
-        self.fc1 = nn.Linear(len_x, 200)
-        self.fc2 = nn.Linear(200, 1)
+        self.fc1 = nn.Linear(size_in, 200)
+        self.fc2 = nn.Linear(200, size_in)
         self.fc2.bias = torch.nn.Parameter(torch.tensor([15.0]))
 
 
@@ -108,6 +117,65 @@ class UQ_Net_std(nn.Module):
         loss = torch.mean((output[:,0] - ydata[:,0])**2)
 
         return loss
+
+class st_uq_model(nn.Module):
+    def __init__(self, st_model, uq_model, batch_size):
+        super(st_uq_model, self).__init__()
+        self.st_model = st_model
+        self.uq_model = uq_model
+        self.relu = nn.ReLU()
+        self.batch_size = batch_size
+
+    def forward(self,x):
+        x = self.relu(self.st_model(x))
+        x = x.transpose(1,3)
+        shape = x.shape
+        #x = x.view(self.batch_size,-1)
+        x = self.uq_model(x.reshape(self.batch_size,-1))
+        return x.reshape(shape)
+
+
+def prep_uq_model(data_in,
+                  preds_in,
+                  batch_size=20,
+                  kernel_size=6,
+                  layer_size=2,
+                  learning_rate=0.0005,
+                  randomadj=False,
+                  n_blocks=4,
+                  scale_y=True,
+                  ):
+
+    if isinstance(data_in,str):
+        data = np.load(data_in)
+    else:
+        data = data_in
+    out_dim = data['y_train'].shape[1]
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    adj_mx = data['dist_matrix']
+    dataloader = load_data_uq(data, preds_in, batch_size)
+    scaler = dataloader['scaler']
+
+    supports = [torch.tensor(adj_mx).to(device).float()]
+    in_dim = len(data['x_cols'])
+    num_nodes = adj_mx.shape[0]
+
+    if randomadj:
+        adjinit = None
+    else:
+        adjinit = supports[0]
+
+    engine = util.trainer(scaler, in_dim, num_nodes, learning_rate, device, supports,
+                     adjinit, out_dim, kernel_size, n_blocks, layer_size, scale_y)
+
+    uq_in_size = dataloader['y_train'][:batch_size,...].reshape(batch_size,-1).shape[1]
+
+    engine.model = st_uq_model(engine.model, UQ_Net_std(uq_in_size), batch_size)
+
+    return dataloader, engine.model
+
+
 
 
 def load_data_uq(cat_data,
@@ -138,6 +206,424 @@ def load_data_uq(cat_data,
 
     return data
 
+def train_uq(out_dir,
+             model,
+             ci_bound,
+             dataloader,
+             epochs_pre,
+             epochs,
+             early_stopping=25,
+             weights=None,
+             ):
+
+    if torch.cuda.is_available():
+        os.system('module load analytics cuda10.1/toolkit/10.1.105')
+        device = 'cuda'
+        print('Training on GPU')
+    else:
+        device = 'cpu'
+        print('Training on CPU')
+
+    #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    if weights:
+        model.load_state_dict(weights)
+
+    criterion = nn.MSELoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.01)
+    ## Pretraining
+    best_mse = 1000 #will get overwritten
+    model.train()
+    pre_train_mse=[]
+    t1 = time.time()
+    dataloader[f"pre_train_{ci_bound}_loader"].shuffle()
+    for i in range(1,epochs_pre+1):
+        for iter, (x, y) in enumerate(dataloader[f'pre_train_{ci_bound}_loader'].get_iterator()):
+            optimizer.zero_grad()
+            trainx = torch.Tensor(x).to(device).transpose(1,3)
+            trainy = torch.Tensor(y).to(device).transpose(1,3)
+            output = model(trainx)
+            #loss = criterion(output, trainy.unsqueeze(1))
+            loss = util.rmse(output, trainy)
+            if torch.isnan(loss):
+                print(output, trainy)
+                exit()
+            loss.backward()
+            optimizer.step()
+            pre_train_mse.append(loss.item())
+        if i%15 == 0:
+            print(f'PT Epoch {i}: loss {np.mean(pre_train_mse):0.4f}')
+    t2 = time.time()
+    print(f"Total pretrain time: {t2-t1}")
+
+    for i in range(1, epochs + 1):
+        train_mse = []
+        dataloader[f'train_{ci_bound}_loader'].shuffle()
+        for iter, (x, y) in enumerate(dataloader[f'train_{ci_bound}_loader'].get_iterator()):
+            optimizer.zero_grad()
+            trainx = torch.Tensor(x).to(device).transpose(1, 3)
+            trainy = torch.Tensor(y).to(device).transpose(1, 3)
+            output = model(trainx)
+            # loss = criterion(output, trainy.unsqueeze(1))
+            loss = util.rmse(output, trainy)
+            if torch.isnan(loss):
+                print(output, trainy)
+                exit()
+            loss.backward()
+            optimizer.step()
+            train_mse.append(loss.item())
+
+        valid_mse = []
+        model.eval()
+        for iter, (x, y) in enumerate(dataloader[f'val_{ci_bound}_loader'].get_iterator()):
+            trainx = torch.Tensor(x).to(device).transpose(1, 3)
+            trainy = torch.Tensor(y).to(device).transpose(1, 3)
+            output = model(trainx)
+            # loss = criterion(output, trainy.unsqueeze(1))
+            loss = util.rmse(output, trainy)
+            valid_mse.append(loss.item())
+
+        mtrain_mse = np.mean(train_mse)
+        mvalid_mse = np.mean(valid_mse)
+        if i%2 == 0:
+            log = 'Epoch: {:03d}, Train MSE: {:.4f}, Valid MSE: {:.4f}'
+            print(log.format(i,mtrain_mse, mvalid_mse),flush=True)
+
+        if mvalid_mse < best_mse:
+            torch.save(model.state_dict(), os.path.join(out_dir,f"weights_uq_{ci_bound}.pth"))
+            best_mse = mvalid_mse
+            epochs_since_best = 0
+        else:
+            epochs_since_best += 1
+        if epochs_since_best > early_stopping:
+            print(f"Early Stopping at Epoch {i}")
+            break
+
+    return model
+
+def predict_uq(model, x_train, batch_size, device):
+
+    num_padding = (batch_size - (len(x_train) % batch_size)) % batch_size
+    x_padding = np.repeat(x_train[-1:], num_padding, axis=0)
+    x_train = np.concatenate([x_train, x_padding], axis=0)
+    num_batches = int(x_train.shape[0] //batch_size)
+
+    output = []
+    model.eval()
+    for i in np.arange(num_batches):
+        ind = i*batch_size
+        x = x_train[ind:ind+batch_size,...]
+        x = torch.Tensor(x).to(device).transpose(1,3)
+        with torch.no_grad():
+            out = model(x).transpose(1,3)
+        output.append(out)
+
+    output = np.concatenate(output)
+    output = output[:-num_padding,...].flatten()
+    return output
+
+
+def calc_uq(out_dir,
+            prepped,
+            preds,
+            quantile=0.90,
+            batch_size = 5,
+            rdl = False,
+            pretrain_epochs=15,
+            epochs = 15,
+            early_stopping=10,
+            out_file='conf_ints.npz'):
+
+    if isinstance(prepped, str):
+        prepped = np.load(prepped)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if rdl:
+        len_x=prepped['x_train'].shape[-1]
+    else:
+        len_x = prepped['x_train'].shape[3]
+
+    dataloader, net_up = prep_uq_model(prepped, preds, batch_size)
+    #dataloader = load_data_uq(prepped, preds, 5, rdl)
+
+    net_up = net_up.to(device)
+    #net_up = UQ_Net_std(len_x).to(device)
+
+    net_up = train_uq(out_dir, net_up, 'up', dataloader, pretrain_epochs, epochs, early_stopping)
+
+    #net_down = UQ_Net_std(len_x).to(device)
+    _, net_down = prep_uq_model(prepped, preds, batch_size)
+
+    net_down = train_uq(out_dir, net_down, 'down', dataloader, pretrain_epochs, epochs, early_stopping)
+
+    # ------------------------------------------------------
+    # Determine how to move the upper and lower bounds
+
+
+    x_train = dataloader['x_train']
+
+    output_up = predict_uq(net_up, x_train,batch_size, device)
+    output_down = predict_uq(net_down,x_train,batch_size,device)
+
+    ytrain = dataloader['y_train'].flatten()
+    output = dataloader['y_hat_train'].flatten()
+    output = output[~np.isnan(ytrain)]
+    output_up = output_up[~np.isnan(ytrain)]
+    output_down = output_down[~np.isnan(ytrain)]
+    ytrain = ytrain[~np.isnan(ytrain)]
+
+    #x_train = dataloader['x_train'][~np.isnan(ytrain)]
+    #x_train = torch.Tensor(x_train).to(device)
+    #ytrain = torch.Tensor(ytrain[~np.isnan(ytrain)]).to(device).unsqueeze(1)
+
+
+
+    '''
+    output = torch.Tensor(dataloader['y_hat_train'][~np.isnan(ytrain)]).to(device).unsqueeze(1)
+    x_train = dataloader['x_train'][~np.isnan(ytrain)]
+    x_train = torch.Tensor(x_train).to(device)
+    ytrain = torch.Tensor(ytrain[~np.isnan(ytrain)]).to(device).unsqueeze(1)
+    '''
+    num_outlier = int(ytrain.shape[0] * (1 - quantile) / 2)
+
+    c_up0 = 0.0
+    c_up1 = 10.0
+
+    f0 = (ytrain >= output + c_up0 * output_up).sum() - num_outlier
+    f1 = (ytrain >= output + c_up1 * output_up).sum() - num_outlier
+
+    n_iter = 1000
+    iter = 0
+    while iter <= n_iter and f0 * f1 < 0:  ##f0 != 0 and f1 != 0:
+
+        c_up2 = (c_up0 + c_up1) / 2.0
+        ##Count the number of obs > the upper bound
+        f2 = (ytrain >= output + c_up2 * output_up).sum() - num_outlier
+
+        if f2 == 0:
+            break
+        elif f2 > 0:
+            c_up0 = c_up2
+            f0 = f2
+        else:
+            c_up1 = c_up2
+            f1 = f2
+        print('{}, f0: {}, f1: {}, f2: {}'.format(iter, f0, f1, f2))
+
+    c_up = c_up2
+
+    c_down0 = 0.0
+    c_down1 = 10.0
+
+    f0 = (ytrain <= output - c_down0 * output_down).sum() - num_outlier
+    f1 = (ytrain <= output - c_down1 * output_down).sum() - num_outlier
+
+    n_iter = 1000
+    iter = 0
+
+    while iter <= n_iter and f0 * f1 < 0:  ##f0 != 0 and f1 != 0:
+
+        c_down2 = (c_down0 + c_down1) / 2.0
+        f2 = (ytrain <= output - c_down2 * output_down).sum() - num_outlier
+
+        if f2 == 0:
+            break
+        elif f2 > 0:
+            c_down0 = c_down2
+            f0 = f2
+        else:
+            c_down1 = c_down2
+            f1 = f2
+        print('{}, f0: {}, f1: {}, f2: {}'.format(iter, f0, f1, f2))
+    c_down = c_down2
+
+
+    x_test = dataloader['x_test']
+    y_hat_test = dataloader['y_hat_test'].flatten()
+
+    y_up_test = predict_uq(net_up, x_test, batch_size, device)
+    y_down_test = predict_uq(net_down, x_test, batch_size,device)
+
+    x_val = dataloader['x_val']
+    y_hat_val = dataloader['y_hat_val'].flatten()
+
+    y_up_val = predict_uq(net_up, x_val, batch_size, device)
+    y_down_val = predict_uq(net_down, x_val, batch_size, device)
+
+    ci_out = {
+        "ci_low_test": y_hat_test - c_down * y_down_test,
+        "ci_high_test": y_hat_test + c_up * y_up_test,
+        "ci_low_val": y_hat_val - c_down * y_down_val,
+        "ci_high_val": y_hat_val + c_up * y_up_val
+    }
+    outfile = os.path.join(out_dir,out_file)
+    np.savez_compressed(outfile, **ci_out)
+
+    return ci_out
+
+def combine_outputs(out_dir, io_data, preds, ci, unscale = True, clean_prepped = False, out_file = 'combined_results.csv'):
+
+    prepped = np.load(io_data)
+    predictions = np.load(preds)
+    conf_intervals = np.load(ci)
+    out_dim = predictions['preds_val'].shape[1]
+    scaler = util.StandardScaler(mean = prepped['y_mean'][0], std = prepped['y_std'][0])
+
+    categories = ['test', 'val']
+    df_out = pd.DataFrame(columns=['date','seg_id_nat','observed','predicted', 'ci_low','ci_high','partition'])
+    for cat in categories:
+        d = {
+        "date": prepped[f'dates_{cat}'][:,-out_dim:,...].flatten(),
+        "seg_id_nat": prepped[f'ids_{cat}'][:,-out_dim:,...].flatten(),
+        "observed":prepped[f'y_{cat}'].flatten(),
+        "predicted":predictions[f'preds_{cat}'].flatten(),
+        "ci_low":conf_intervals[f'ci_low_{cat}'],
+        "ci_high":conf_intervals[f'ci_high_{cat}'],
+        }
+        df = pd.DataFrame(data = d)
+        df['partition'] = cat
+        df_out = pd.concat([df_out,df])
+    df_out.set_index('partition', inplace=True)
+    if unscale:
+        df_out[['observed','predicted', 'ci_low','ci_high']] = df_out[['observed','predicted', 'ci_low','ci_high']].apply(lambda x: scaler.inverse_transform(x))
+
+    if clean_prepped == 'full':
+        os.remove(io_data)
+        os.remove(preds)
+        os.remove(ci)
+
+    if clean_prepped == 'partial':
+        os.remove(preds)
+        os.remove(ci)
+
+    df_out = df_out.round(5)
+    df_out.to_csv(os.path.join(out_dir,out_file))
+
+    return df_out
+'''
+def monthly_summary(df, partition):
+    df.
+'''
+## Some of these functions have
+
+def nse(y_true, y_pred):
+    y_pred = y_pred[~np.isnan(y_true)]
+    y_true = y_true[~np.isnan(y_true)]
+
+    mean = np.nanmean(y_true)
+    deviation = y_true - mean
+    error = y_pred-y_true
+    numerator = np.sum(np.square(error))
+    denominator = np.sum(np.square(deviation))
+    return 1 - numerator / denominator
+
+
+def rmse_eval(y_true, y_pred):
+    y_pred = y_pred[~np.isnan(y_true)]
+    y_true = y_true[~np.isnan(y_true)]
+    n = len(y_true)
+    sum_squared_error = np.sum(np.square(y_pred-y_true))
+    rmse = np.sqrt(sum_squared_error/n)
+    return rmse
+
+
+def piw(ci_high, ci_low):
+    piw = ci_high - ci_low
+    return np.mean(piw)
+
+def picp(ci_high,ci_low, y_true):
+    ci_low = ci_low[~np.isnan(y_true)]
+    ci_high = ci_high[~np.isnan(y_true)]
+    y_true = y_true[~np.isnan(y_true)]
+    n_in = len(y_true[(y_true > ci_low) & (y_true < ci_high)])
+    return n_in/len(y_true)
+
+
+def calc_metrics(df):
+    """
+    calculate metrics (e.g., rmse and nse)
+    :param df:[pd dataframe] dataframe of observations and predictions for
+    one reach. dataframe must have columns "obs" and "pred"
+    :return: [pd Series] various evaluation metrics (e.g., rmse and nse)
+    """
+
+    obs = df["observed"].values
+    pred = df["predicted"].values
+    ci_high = df['ci_high'].values
+    ci_low = df['ci_low'].values
+    if len(obs[~np.isnan(obs)]) > 10:
+        metrics = {
+            "rmse": rmse_eval(obs, pred),
+            "nse": nse(obs, pred),
+            'piw': piw(ci_high,ci_low),
+            "picp": picp(ci_high, ci_low,obs)
+        }
+    else:
+        metrics = {
+            "rmse": np.nan,
+            "nse": np.nan,
+            "piw":np.nan,
+            "picp": np.nan
+        }
+    return pd.Series(metrics)
+
+
+def partition_metrics(
+        df,
+        spatial_idx_name="seg_id_nat",
+        time_idx_name="date",
+        group=None,
+        outfile=None
+):
+    """
+    calculate metrics for a certain group (or no group at all) for a given
+    partition and variable
+    :param pred_file: [str] path to predictions feather file
+    :param obs_file: [str] path to observations zarr file
+    :param partition: [str] data partition for which metrics are calculated
+    :param spatial_idx_name: [str] name of column that is used for spatial
+        index (e.g., 'seg_id_nat')
+    :param time_idx_name: [str] name of column that is used for temporal index
+        (usually 'time')
+    :param group: [str or list] which group the metrics should be computed for.
+    Currently only supports 'seg_id_nat' (segment-wise metrics), 'month'
+    (month-wise metrics), ['seg_id_nat', 'month'] (metrics broken out by segment
+    and month), and None (everything is left together)
+    :param outfile: [str] file where the metrics should be written
+    :return: [pd dataframe] the condensed metrics
+    """
+    if isinstance(df,str):
+        df = pd.read_csv(df).set_index('partition')
+        df.date = pd.to_datetime(df.date)
+    var_metrics_list = []
+    for i in ['test','val']:
+        data = df.loc[i,]
+        if not group:
+            metrics_overall = calc_metrics(data)
+            metrics_overall['group'] = 'Overall'
+            temps_high = calc_metrics(data.loc[data.observed > 20])
+            temps_high['group'] = 'Above20'
+            temps_low = calc_metrics(data.loc[data.observed < 10])
+            temps_low['group'] = 'Below10'
+            # need to convert to dataframe and transpose so it looks like the
+            # others
+            metrics = pd.concat(pd.DataFrame(i).T for i in [metrics_overall, temps_low, temps_high])
+        elif group == "seg_id_nat":
+            metrics = data.groupby(spatial_idx_name).apply(calc_metrics).reset_index()
+        elif group == "month":
+            metrics = (
+            data.groupby(data[time_idx_name].dt.month).apply(calc_metrics).reset_index()
+            )
+        else:
+            raise ValueError("group value not valid")
+        metrics["partition"] = i
+        var_metrics_list.append(metrics)
+    var_metrics = pd.concat(var_metrics_list).round(5)
+    if outfile:
+        var_metrics.to_csv(outfile, header=True, index=False)
+    return var_metrics
+
+'''
 def train_uq(out_dir,
              model,
              ci_bound,
@@ -351,166 +837,4 @@ def calc_uq(out_dir,
     np.savez_compressed(outfile, **ci_out)
 
     return ci_out
-
-
-def combine_outputs(out_dir, io_data, preds, ci, unscale = True, clean_prepped = False, out_file = 'combined_results.csv'):
-
-    prepped = np.load(io_data)
-    predictions = np.load(preds)
-    conf_intervals = np.load(ci)
-    out_dim = predictions['preds_val'].shape[1]
-    scaler = util.StandardScaler(mean = prepped['y_mean'][0], std = prepped['y_std'][0])
-
-    categories = ['test', 'val']
-    df_out = pd.DataFrame(columns=['date','seg_id_nat','observed','predicted', 'ci_low','ci_high','partition'])
-    for cat in categories:
-        d = {
-        "date": prepped[f'dates_{cat}'][:,-out_dim:,...].flatten(),
-        "seg_id_nat": prepped[f'ids_{cat}'][:,-out_dim:,...].flatten(),
-        "observed":prepped[f'y_{cat}'].flatten(),
-        "predicted":predictions[f'preds_{cat}'].flatten(),
-        "ci_low":conf_intervals[f'ci_low_{cat}'],
-        "ci_high":conf_intervals[f'ci_high_{cat}'],
-        }
-        df = pd.DataFrame(data = d)
-        df['partition'] = cat
-        df_out = pd.concat([df_out,df])
-    df_out.set_index('partition', inplace=True)
-    if unscale:
-        df_out[['observed','predicted', 'ci_low','ci_high']] = df_out[['observed','predicted', 'ci_low','ci_high']].apply(lambda x: scaler.inverse_transform(x))
-
-    if clean_prepped == 'full':
-        os.remove(io_data)
-        os.remove(preds)
-        os.remove(ci)
-
-    if clean_prepped == 'partial':
-        os.remove(preds)
-        os.remove(ci)
-
-    df_out = df_out.round(5)
-    df_out.to_csv(os.path.join(out_dir,out_file))
-
-    return df_out
 '''
-def monthly_summary(df, partition):
-    df.
-'''
-## Some of these functions have
-
-def nse(y_true, y_pred):
-    y_pred = y_pred[~np.isnan(y_true)]
-    y_true = y_true[~np.isnan(y_true)]
-
-    mean = np.nanmean(y_true)
-    deviation = y_true - mean
-    error = y_pred-y_true
-    numerator = np.sum(np.square(error))
-    denominator = np.sum(np.square(deviation))
-    return 1 - numerator / denominator
-
-
-def rmse_eval(y_true, y_pred):
-    y_pred = y_pred[~np.isnan(y_true)]
-    y_true = y_true[~np.isnan(y_true)]
-    n = len(y_true)
-    sum_squared_error = np.sum(np.square(y_pred-y_true))
-    rmse = np.sqrt(sum_squared_error/n)
-    return rmse
-
-
-def piw(ci_high, ci_low):
-    piw = ci_high - ci_low
-    return np.mean(piw)
-
-def picp(ci_high,ci_low, y_true):
-    ci_low = ci_low[~np.isnan(y_true)]
-    ci_high = ci_high[~np.isnan(y_true)]
-    y_true = y_true[~np.isnan(y_true)]
-    n_in = len(y_true[(y_true > ci_low) & (y_true < ci_high)])
-    return n_in/len(y_true)
-
-
-def calc_metrics(df):
-    """
-    calculate metrics (e.g., rmse and nse)
-    :param df:[pd dataframe] dataframe of observations and predictions for
-    one reach. dataframe must have columns "obs" and "pred"
-    :return: [pd Series] various evaluation metrics (e.g., rmse and nse)
-    """
-
-    obs = df["observed"].values
-    pred = df["predicted"].values
-    ci_high = df['ci_high'].values
-    ci_low = df['ci_low'].values
-    if len(obs[~np.isnan(obs)]) > 10:
-        metrics = {
-            "rmse": rmse_eval(obs, pred),
-            "nse": nse(obs, pred),
-            'piw': piw(ci_high,ci_low),
-            "picp": picp(ci_high, ci_low,obs)
-        }
-    else:
-        metrics = {
-            "rmse": np.nan,
-            "nse": np.nan,
-            "piw":np.nan,
-            "picp": np.nan
-        }
-    return pd.Series(metrics)
-
-
-def partition_metrics(
-        df,
-        spatial_idx_name="seg_id_nat",
-        time_idx_name="date",
-        group=None,
-        outfile=None
-):
-    """
-    calculate metrics for a certain group (or no group at all) for a given
-    partition and variable
-    :param pred_file: [str] path to predictions feather file
-    :param obs_file: [str] path to observations zarr file
-    :param partition: [str] data partition for which metrics are calculated
-    :param spatial_idx_name: [str] name of column that is used for spatial
-        index (e.g., 'seg_id_nat')
-    :param time_idx_name: [str] name of column that is used for temporal index
-        (usually 'time')
-    :param group: [str or list] which group the metrics should be computed for.
-    Currently only supports 'seg_id_nat' (segment-wise metrics), 'month'
-    (month-wise metrics), ['seg_id_nat', 'month'] (metrics broken out by segment
-    and month), and None (everything is left together)
-    :param outfile: [str] file where the metrics should be written
-    :return: [pd dataframe] the condensed metrics
-    """
-    if isinstance(df,str):
-        df = pd.read_csv(df).set_index('partition')
-        df.date = pd.to_datetime(df.date)
-    var_metrics_list = []
-    for i in ['test','val']:
-        data = df.loc[i,]
-        if not group:
-            metrics_overall = calc_metrics(data)
-            metrics_overall['group'] = 'Overall'
-            temps_high = calc_metrics(data.loc[data.observed > 20])
-            temps_high['group'] = 'Above20'
-            temps_low = calc_metrics(data.loc[data.observed < 10])
-            temps_low['group'] = 'Below10'
-            # need to convert to dataframe and transpose so it looks like the
-            # others
-            metrics = pd.concat(pd.DataFrame(i).T for i in [metrics_overall, temps_low, temps_high])
-        elif group == "seg_id_nat":
-            metrics = data.groupby(spatial_idx_name).apply(calc_metrics).reset_index()
-        elif group == "month":
-            metrics = (
-            data.groupby(data[time_idx_name].dt.month).apply(calc_metrics).reset_index()
-            )
-        else:
-            raise ValueError("group value not valid")
-        metrics["partition"] = i
-        var_metrics_list.append(metrics)
-    var_metrics = pd.concat(var_metrics_list).round(5)
-    if outfile:
-        var_metrics.to_csv(outfile, header=True, index=False)
-    return var_metrics
