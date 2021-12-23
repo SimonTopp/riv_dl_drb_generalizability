@@ -225,7 +225,7 @@ def train_uq(out_dir,
         print('Training on CPU')
 
     #device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    model = model.to(device)
     if weights:
         model.load_state_dict(weights)
 
@@ -315,11 +315,14 @@ def predict_uq(model, x_train, batch_size, device):
         x = x_train[ind:ind+batch_size,...]
         x = torch.Tensor(x).to(device).transpose(1,3)
         with torch.no_grad():
-            out = model(x).transpose(1,3)
+            out = model(x).transpose(1,3).detach().cpu().numpy()
         output.append(out)
 
     output = np.concatenate(output)
-    output = output[:-num_padding,...].flatten()
+    if num_padding > 0:
+        output = output[:-num_padding,...]
+
+    output = output.flatten()
     return output
 
 
@@ -346,7 +349,6 @@ def calc_uq(out_dir,
     dataloader, net_up = prep_uq_model(prepped, preds, batch_size)
     #dataloader = load_data_uq(prepped, preds, 5, rdl)
 
-    net_up = net_up.to(device)
     #net_up = UQ_Net_std(len_x).to(device)
 
     net_up = train_uq(out_dir, net_up, 'up', dataloader, pretrain_epochs, epochs, early_stopping)
@@ -449,6 +451,7 @@ def calc_uq(out_dir,
 
     y_up_val = predict_uq(net_up, x_val, batch_size, device)
     y_down_val = predict_uq(net_down, x_val, batch_size, device)
+
 
     ci_out = {
         "ci_low_test": y_hat_test - c_down * y_down_test,
