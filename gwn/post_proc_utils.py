@@ -541,6 +541,12 @@ def picp(ci_high,ci_low, y_true):
     n_in = len(y_true[(y_true > ci_low) & (y_true < ci_high)])
     return n_in/len(y_true)
 
+def bias(y_true, y_pred):
+    y_pred = y_pred[~np.isnan(y_true)]
+    y_true = y_true[~np.isnan(y_true)]
+    bias = np.mean(y_pred-y_true)
+    return bias
+
 
 def calc_metrics(df):
     """
@@ -558,6 +564,7 @@ def calc_metrics(df):
         metrics = {
             "rmse": rmse_eval(obs, pred),
             "nse": nse(obs, pred),
+            "bias":bias(obs, pred),
             'piw': piw(ci_high,ci_low),
             "picp": picp(ci_high, ci_low,obs)
         }
@@ -565,6 +572,7 @@ def calc_metrics(df):
         metrics = {
             "rmse": np.nan,
             "nse": np.nan,
+            "bias": np.nan,
             "piw":np.nan,
             "picp": np.nan
         }
