@@ -11,12 +11,13 @@ library(mapview)
 library(sf)
 library(dataRetrieval)
 library(nhdplusTools)
+library(reticulate)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
 ```{r, echo = F,eval = F, include = F}
-temp_obs <- read_csv('../data/in/temperature_observations_drb.csv') %>% filter(date > '1985-01-01')
+temp_obs <- read_csv('../data/in/temperature_observations_drb.csv') %>% filter(date > '1980-01-01')
 res_info <- readRDS('../data/in/DRB_spatial/segments_relative_to_reservoirs.rds')
 
 spatial <- readRDS('../data/in/DRB_spatial/network.rds')
@@ -166,7 +167,7 @@ temp_obs %>% filter(seg_id_nat == 1638) %>%
 #### This include the HUC12's that comprise the Neversink watershed and sites/days with observations since 1980
 
 ```{r echo = F, warnings = F}
-drb = st_read('../../StreamTemps/data/drbbnd/drb_bnd_polygon.shp')
+drb = st_read('../StreamTemps/data/drbbnd/drb_bnd_polygon.shp')
 
 drb_huc_12 = get_huc12(drb)
 
@@ -216,4 +217,5 @@ g <- gridExtra::grid.arrange(p2,p3, nrow = 1)
 mapview(neversink, zcol='huc12') + mapview(neversink_sites, zcol = 'count_per_site')
 
 ```
+
 

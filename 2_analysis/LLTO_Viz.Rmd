@@ -12,9 +12,8 @@ library(reticulate)
 library(sf)
 library(plotly)
 library(feather)
-source('2_Analysis/utils.R')
+source('../drb_gwnet/2_Analysis/utils.R')
 library(ggridges)
-
 
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -22,15 +21,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Baseline Comparisons
 
 ```{r}
-spatial <- readRDS('data/in/DRB_spatial/network.rds')
+setwd('../river-dl')
+spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
 edges <- spatial$edges %>% st_as_sf()
 
 metrics <- c('overall_metrics','month_metrics','reach_metrics')
 
-gwn_stats <- metrics %>% map(~combine_replicates('data/out/baseline',.))
+gwn_stats <- metrics %>% map(~combine_replicates('results/baseline/GWN',.))
 names(gwn_stats) <- c('temps','months','segs')
 
-rgcn_stats <- metrics %>% map(~combine_replicates('../river-dl/data/out/baseline',.))
+rgcn_stats <- metrics %>% map(~combine_replicates('results/baseline/RGCN',.))
 names(rgcn_stats) <- c('temps','months','segs')
 
 ## Figure for overall difference between the two models
@@ -40,22 +40,19 @@ p1 <- gwn_stats$segs %>% mutate(run = 'GraphWaveNet') %>% bind_rows(rgcn_stats$s
   facet_wrap(~run) + labs(color = 'RMSE')
 p1
 
-baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GraphWaveNet')
+baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GraphWaveNet',shape=edges)
 
 p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
   labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +
   theme(title = element_text(size =8))
 p2
 
-bias_gwn <- add_bias('data/out/baseline')
-bias_rgcn <- add_bias('../river-dl/data/out/baseline')
 
-
-p3 <- bias_rgcn$months %>% filter(partition == 'test') %>% mutate(model= 'RGCN') %>%
-  bind_rows(bias_gwn$months %>% filter(partition == 'test') %>% mutate(model = 'GraphWaveNet')) %>%
-  pivot_longer(c(rmse_mean, bias_mean)) %>%
-  mutate(name = factor(name, levels = c('rmse_mean', 'bias_mean'), labels = c('RMSE','Bias'))) %>%
-  ggplot(aes(x=month, y=value, fill=model, shape = name)) +
+p3 <- rgcn_stats$months %>% filter(partition == 'tst') %>% mutate(model= 'RGCN') %>%
+  bind_rows(gwn_stats$months %>% filter(partition == 'tst') %>% mutate(model = 'GraphWaveNet')) %>%
+  pivot_longer(c(rmse_mean, mean_bias_mean)) %>%
+  mutate(name = factor(name, levels = c('rmse_mean', 'mean_bias_mean'), labels = c('RMSE','Bias'))) %>%
+  ggplot(aes(x=date, y=value, fill=model, shape = name)) +
   scale_fill_viridis_d(end =.6) +
   #scale_y_continuous(breaks = c(0,1,2)) +
   geom_col(position = 'dodge') +
@@ -72,67 +69,75 @@ layout <- rbind(c(1,1,2),
 
 g <- gridExtra::grid.arrange(p1,p2,p3, layout_matrix = layout)
 
-ggsave('2_analysis/figures/baseline_comps.png', plot = g, width = 5, height = 4.5, units = 'in')
+ggsave('../drb_gwnet/2_analysis/figures/baseline_comps.png', plot = g, width = 5, height = 4.5, units = 'in')
 
 rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'test') %>%
-  select(group, rmse_mean, model) %>%
-  filter(group != 'Normal Temp') %>%
-  mutate(rmse_mean = round(rmse_mean, 2), group = case_when(group == 'Above20'~ '>20 °C',
-                                                            group == 'Below10'~ '<10 °C',
-                                                            group== 'Overall'~ 'Overall')) %>%
-  rename(`Temperature Bin` = group) %>%
-  pivot_wider(names_from = model, values_from = rmse_mean) %>%
-  mutate(`GWN Improvement` = abs(GWN-RGCN)) %>%
+  filter(partition == 'tst') %>%
+  select(rmse_mean, rmse_top10_mean,rmse_bot10_mean, model) %>%
+  pivot_longer(-model) %>%
+  mutate(name = case_when(name == 'rmse_top10_mean'~ 'Warmest 10%',
+                                                            name == 'rmse_bot10_mean'~ 'Coldest 10%',
+                                                            name== 'rmse_mean'~ 'Overall')) %>%
+  rename(`Temperature Bin` = name) %>%
+  pivot_wider(names_from = model, values_from = value) %>%
+  mutate(`GWN-RGCN` = GWN-RGCN) %>%
   relocate(RGCN, .after = GWN) %>%
-  kableExtra::kbl(col.names = c('Temperature\nBin','GWN','RGCN','GWN\nImprovement')) %>%
+  kableExtra::kbl(col.names = c('Temperature\nBin','GWN','RGCN','GWN-RGCN')) %>%
   kableExtra::add_header_above(c('Overall RMSE by Temperature Bin' = 4)) %>%
-  kableExtra::row_spec(1, bold = T, color = "white", background = "#D7261E") %>%
-  kableExtra::row_spec(2, bold = T, color = 'white', background = 'blue') %>%
-  kableExtra::row_spec(3, bold = T, color = 'grey') %>%
+  kableExtra::row_spec(2, bold = T, color = "white", background = "#D7261E") %>%
+  kableExtra::row_spec(3, bold = T, color = 'white', background = 'blue') %>%
+  kableExtra::row_spec(1, bold = T, color = 'grey') %>%
   kableExtra::kable_material(full_width = F)
 
 rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'test') %>%
-  select(group, nse_mean, model) %>%
-  filter(group != 'Normal Temp') %>%
-  mutate(nse_mean = round(nse_mean, 2), group = case_when(group == 'Above20'~ '>20 °C',
-                                                            group == 'Below10'~ '<10 °C',
-                                                            group== 'Overall'~ 'Overall')) %>%
-  rename(`Temp. Bin` = group) %>%
-  pivot_wider(names_from = model, values_from = nse_mean) %>%
-  mutate(`GWN Improvement` = (GWN-RGCN)) %>%
+  filter(partition == 'tst') %>%
+  select(nse_mean, nse_top10_mean,nse_bot10_mean, model) %>%
+  pivot_longer(-model) %>%
+  mutate(name = case_when(name == 'nse_top10_mean'~ 'Warmest 10%',
+                                                            name == 'nse_bot10_mean'~ 'Coldest 10%',
+                                                            name== 'nse_mean'~ 'Overall')) %>%
+  rename(`Temperature Bin` = name) %>%
+  pivot_wider(names_from = model, values_from = value) %>%
+  mutate(`GWN Improvement` = GWN-RGCN) %>%
   relocate(RGCN, .after = GWN) %>%
-  kableExtra::kbl(col.names = c('Temperature\nBin','GWN','RGCN','GWN\nImprovement')) %>%
-  kableExtra::add_header_above(c('Overall NSE by Temperature Bin' = 4)) %>%
-  kableExtra::row_spec(1, bold = T, color = "white", background = "#D7261E") %>%
-  kableExtra::row_spec(2, bold = T, color = 'white', background = 'blue') %>%
-  kableExtra::row_spec(3, bold = T, color = 'grey') %>%
-  kableExtra::kable_material(full_width = F) 
+  kableExtra::kbl(col.names = c('Temperature\nBin','GWN','RGCN','GWN-RGCN')) %>%
+  kableExtra::add_header_above(c('Overall nse by Temperature Bin' = 4)) %>%
+  kableExtra::row_spec(2, bold = T, color = "white", background = "#D7261E") %>%
+  kableExtra::row_spec(3, bold = T, color = 'white', background = 'blue') %>%
+  kableExtra::row_spec(1, bold = T, color = 'grey') %>%
+  kableExtra::kable_material(full_width = F)
 
 p1 <- rgcn_stats$temps %>%
   mutate(model = 'RGCN') %>%
   bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'test') %>%
-  ggplot(., aes(x = group, y = nse_mean, color = model)) +
+  filter(partition == 'tst') %>% select(contains(c('rmse','model'))) %>%
+  select(-contains('logged')) %>%
+  rename(top10_mean = rmse_top10_mean, top10_sd = rmse_top10_sd, bot10_mean = rmse_bot10_mean, bot10_sd= rmse_bot10_sd) %>%
+  pivot_longer(-model, names_to=c('group','metric'), names_sep = '_') %>%
+  pivot_wider(names_from=metric) %>%
+  ggplot(., aes(x = group, y = mean, color = model)) +
   geom_point() +
-  geom_errorbar(aes(ymin = nse_mean - nse_sd, ymax = nse_mean +nse_sd)) +
-  theme_bw() +
-  ggtitle('NSE')
-
-p2 <- rgcn_stats$temps %>%
-  mutate(model = 'RGCN') %>%
-  bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'test') %>%
-  ggplot(., aes(x = group, y = rmse_mean, color = model)) +
-  geom_point() +
-  geom_errorbar(aes(ymin = rmse_mean - rmse_sd, ymax = rmse_mean + rmse_sd)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd)) +
   theme_bw() +
   ggtitle('RMSE')
 
-gridExtra::grid.arrange(p1,p2, ncol = 1)
+p2<- rgcn_stats$temps %>%
+  mutate(model = 'RGCN') %>%
+  bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
+  filter(partition == 'tst') %>% select(contains(c('nse','model'))) %>%
+  select(-contains('logged')) %>%
+  rename(top10_mean = nse_top10_mean, top10_sd = nse_top10_sd, bot10_mean = nse_bot10_mean, bot10_sd= nse_bot10_sd) %>%
+  pivot_longer(-model, names_to=c('group','metric'), names_sep = '_') %>%
+  pivot_wider(names_from=metric) %>%
+  ggplot(., aes(x = group, y = mean, color = model)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd)) +
+  theme_bw() +
+  ggtitle('NSE')
+
+gridExtra::grid.arrange(p1,p2, ncol = 1, top = 'Mean and SD across replicates')
 ```
 
 ### LTO Comps
@@ -140,28 +145,24 @@ gridExtra::grid.arrange(p1,p2, ncol = 1)
 ```{r}
 metrics <- c('overall_metrics','month_metrics','reach_metrics')
 
-gwn_lto_min <- metrics %>% map(~combine_replicates('data/out/LTO/min',.))
+gwn_lto_min <- metrics %>% map(~combine_replicates('results/LTO/GWN/min',.))
 names(gwn_lto_min) <- c('temps','months','segs')
 
-gwn_lto_max <- metrics %>% map(~combine_replicates('data/out/LTO/max', .))
+gwn_lto_max <- metrics %>% map(~combine_replicates('results/LTO/GWN/max', .))
 names(gwn_lto_max) <- c('temps','months','segs')
 
 
-rgcn_lto_min <- metrics %>% map(~combine_replicates('../river-dl/data/out/LTO/min',.))
+rgcn_lto_min <- metrics %>% map(~combine_replicates('results/LTO/RGCN/min',.))
 names(rgcn_lto_min) <- c('temps','months','segs')
 
-rgcn_lto_max <- metrics %>% map(~combine_replicates('../river-dl/data/out/LTO/max',.))
+rgcn_lto_max <- metrics %>% map(~combine_replicates('results/LTO/RGCN/max',.))
 names(rgcn_lto_max) <- c('temps','months','segs')
 
-rgcn_diff_min <- seg_error_diff(rgcn_stats$segs, rgcn_lto_min$segs, 'Baseline', 'Holdout')
-rgcn_diff_max <- seg_error_diff(rgcn_stats$segs, rgcn_lto_max$segs, 'Baseline', 'Holdout')
+rgcn_diff_min <- seg_error_diff(rgcn_stats$segs, rgcn_lto_min$segs, 'Baseline', 'Holdout',shape=edges)
+rgcn_diff_max <- seg_error_diff(rgcn_stats$segs, rgcn_lto_max$segs, 'Baseline', 'Holdout',shape=edges)
 
-gwn_stats$temps %>% mutate(model == 'GWN') %>%
-
-ggplot(gwn_stats$temps %>% filter(partition == 'test'), aes(x=group, y = ))
-
-gwn_diff_min <- seg_error_diff(gwn_stats$segs, gwn_lto_max$segs, 'Baseline', 'Holdout')
-gwn_diff_max <- seg_error_diff(gwn_stats$segs, gwn_lto_max$segs, 'Baseline', 'Holdout')
+gwn_diff_min <- seg_error_diff(gwn_stats$segs, gwn_lto_max$segs, 'Baseline', 'Holdout', shape=edges)
+gwn_diff_max <- seg_error_diff(gwn_stats$segs, gwn_lto_max$segs, 'Baseline', 'Holdout',shape=edges)
 
 full <- rgcn_diff_max %>% mutate(model = 'RGCN', holdout = 'Max Temps') %>%
   bind_rows(rgcn_diff_min%>% mutate(model = 'RGCN', holdout = 'Min Temps')) %>%
@@ -184,20 +185,23 @@ full %>%
   
 ggsave('2_analysis/figures/lto_spatial.png', width = 4, height = 5, units = 'in')
 
+full <- full %>% mutate_all(~ifelse(is.nan(.), NA, .))
 lto_full_segs <- gwn_lto_min$segs %>% mutate(run = 'Train Hot/Test Cold', model='GWN') %>%
   bind_rows(gwn_lto_max$segs %>% mutate(run = 'Train Cold/Test Hot', model='GWN')) %>%
   bind_rows(rgcn_lto_max$segs %>% mutate(run = 'Train Cold/Test Hot', model = 'RGCN')) %>%
   bind_rows(rgcn_lto_min$segs %>% mutate(run = 'Train Hot/Test Cold', model = 'RGCN')) %>%
   bind_rows(gwn_stats$segs %>% mutate(run = 'Baseline') %>% mutate(model = 'GWN')) %>%
   bind_rows(rgcn_stats$segs %>% mutate(run = 'Baseline', model = 'RGCN')) %>%
-  filter(partition == 'test') %>%
-  pivot_longer(c(contains('sd'),contains('mean')),
+  filter(partition == 'tst') %>%
+  select(rmse_mean,rmse_sd,model,run,seg_id_nat) %>%
+  mutate_all(~ifelse(is.nan(.),NA,.)) %>%
+  pivot_longer(cols=contains(c('sd','mean')),
                names_to=c('metric','type'),
                names_sep = '_') %>%
   pivot_wider(names_from='type', values_from = 'value')
 
+
 meds <- lto_full_segs %>% 
-  filter(partition == 'test') %>%
   group_by(model, run, metric) %>%
   summarise(median = median(mean, na.rm = T))
 
@@ -217,8 +221,7 @@ ggplot(lto_full_segs %>% filter(metric == 'rmse'), aes(x = run, y = mean))+
         axis.text.x = element_blank()) +
   facet_wrap(~model)
 
-ggsave('2_analysis/figures/LTO_Segs_Violin.png', width = 5.5, height =4, units = 'in')
-
+ggsave('../drb_gwnet/2_analysis/figures/LTO_Segs_Violin.png', width = 5.5, height =4, units = 'in')
 
 ggplot(lto_full_segs %>% filter(metric=='rmse'), aes(x=mean, y = model, fill = run)) +
   stat_density_ridges(alpha = .3, scale = 1, quantile_lines = T,quantiles = 0.5) +
@@ -230,37 +233,45 @@ ggplot(lto_full_segs %>% filter(metric=='rmse'), aes(x=mean, y = model, fill = r
   ggtitle('Comparison of Reach Scale RMSE') +
   facet_wrap(~metric, scales = 'free')
 
-lto_full_temps <- gwn_lto_min$temps %>% mutate(run = 'Train Hot/Test Cold', model='GWN') %>%
+lto_full_temps <- 
+  gwn_lto_min$temps %>% mutate(run = 'Train Hot/Test Cold', model='GWN') %>%
   bind_rows(gwn_lto_max$temps %>% mutate(run = 'Train Cold/Test Hot', model='GWN')) %>%
   bind_rows(rgcn_lto_max$temps %>% mutate(run = 'Train Cold/Test Hot', model = 'RGCN')) %>%
   bind_rows(rgcn_lto_min$temps %>% mutate(run = 'Train Hot/Test Cold', model = 'RGCN')) %>%
   bind_rows(gwn_stats$temps %>% mutate(run = 'Baseline') %>% mutate(model = 'GWN')) %>%
   bind_rows(rgcn_stats$temps %>% mutate(run = 'Baseline', model = 'RGCN')) %>%
-  filter(partition == 'test') %>%
-  pivot_longer(c(contains('sd'),contains('mean')),
-               names_to=c('metric','type'),
-               names_sep = '_') %>%
-  pivot_wider(names_from='type', values_from = 'value')
-  #pivot_longer(c('nse','rmse','piw','picp'), names_to = 'metric')
-
-ggplot(lto_full_temps %>% filter(metric %in% c('rmse', 'nse')), aes(x= group,color = run, y = mean))+
+  filter(partition == 'tst') %>%
+  select(contains(c('nse','model','run'))) %>%
+  select(-contains(c('logged'))) %>%
+  rename(top10_mean = nse_top10_mean, top10_sd = nse_top10_sd, bot10_mean = nse_bot10_mean, bot10_sd= nse_bot10_sd) %>%
+  pivot_longer(-c(model,run), names_to=c('group','metric'), names_sep = '_') %>%
+  pivot_wider(names_from=metric)
+  
+ggplot(lto_full_temps, aes(x= group, color = run, y = mean))+
   geom_point(position=position_dodge(.3)) +
   geom_errorbar(aes(ymin = mean-sd, ymax=mean+sd), position = position_dodge(.3)) +
-  facet_grid(metric~model)
+  facet_wrap(~model)
 
-lto_full_temps %>%
-  filter(metric %in% c('nse','rmse')) %>%
-  ggplot(aes(x= model, y= mean, fill = run)) +
-  geom_col(position = 'dodge') +
-  facet_grid(metric~group, scales = 'free')
+lto_full_temps <- 
+  gwn_lto_min$temps %>% mutate(run = 'Train Hot/Test Cold', model='GWN') %>%
+  bind_rows(gwn_lto_max$temps %>% mutate(run = 'Train Cold/Test Hot', model='GWN')) %>%
+  bind_rows(rgcn_lto_max$temps %>% mutate(run = 'Train Cold/Test Hot', model = 'RGCN')) %>%
+  bind_rows(rgcn_lto_min$temps %>% mutate(run = 'Train Hot/Test Cold', model = 'RGCN')) %>%
+  bind_rows(gwn_stats$temps %>% mutate(run = 'Baseline') %>% mutate(model = 'GWN')) %>%
+  bind_rows(rgcn_stats$temps %>% mutate(run = 'Baseline', model = 'RGCN')) %>%
+  filter(partition == 'tst') %>%
+  select(contains(c('rmse','model','run'))) %>%
+  select(-contains(c('logged'))) %>%
+  rename(top10_mean = rmse_top10_mean, top10_sd = rmse_top10_sd, bot10_mean = rmse_bot10_mean, bot10_sd= rmse_bot10_sd) %>%
+  pivot_longer(-c(model,run), names_to=c('group','metric'), names_sep = '_') %>%
+  pivot_wider(names_from=metric)
+  
+ggplot(lto_full_temps, aes(x= group, color = run, y = mean))+
+  geom_point(position=position_dodge(.3)) +
+  geom_errorbar(aes(ymin = mean-sd, ymax=mean+sd), position = position_dodge(.3)) +
+  facet_wrap(~model)
 
-ggplot(lto_full_temps, aes(x=mean, y = group, color = run)) +
-  geom_point(position=position_dodge(width=.2)) +
-  geom_errorbarh(aes(xmin = mean-sd,xmax = mean+sd),
-                 linetype = "dotted",
-                 position=position_dodge(width=0.2)) +
-  facet_grid(model~metric, scales = 'free')
-        
+
 lto_full_temps %>% #select(temp_group, run, rmse, model) %>%
   filter(group != 'Normal Temp', partition == 'test', metric %in% c('nse','rmse')) %>%
   select(-sd) %>%

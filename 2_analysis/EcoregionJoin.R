@@ -9,9 +9,9 @@ unzip('data/in/DRB_spatial/EcoregionsIII.zip')
 file.remove('data/in/DRB_spatial/EcoregionsIII.zip')
 
 ### Join to DRB
-ecoregs <- st_read('../data/in/DRB_spatial/EcoregionsIII/us_eco_l3.shp')
+ecoregs <- st_read('../river-dl/data_DRB/DRB_spatial/EcoregionsIII/us_eco_l3.shp')
 
-drb_segs <- readRDS('../data/in/DRB_spatial/network.rds')
+drb_segs <- readRDS('../river-dl/data_DRB/DRB_spatial/network.rds')
 
 drb_segs <- drb_segs$edges
 
@@ -28,13 +28,12 @@ ggplot(ecoregs_clipped %>% st_simplify(dTolerance = 500)) + geom_sf(aes(fill = U
   theme_minimal()
 
 ### All the NA's are in facet Middle Atlantic Coastal Plain
-
 seg_ecoregions$NA_L3NAME[is.na(seg_ecoregions$NA_L3NAME)] <- 'Middle Atlantic Coastal Plain'
 colSums(is.na(seg_ecoregions))
 
 seg_ecoregions %>% group_by(NA_L3NAME) %>% summarise(count = n())
 
-temp_obs <- read_csv('../data/in/temperature_observations_drb.csv') %>%
+temp_obs <- read_csv('../river-dl/data_DRB/temperature_observations_drb.csv') %>%
   filter(date > '1980-01-01')
 
 temp_obs <- temp_obs %>% left_join(seg_ecoregions %>% st_set_geometry(NULL) %>% select(seg_id_nat, ecoreg = NA_L3NAME)) 
@@ -56,9 +55,9 @@ temp_sums %>%
 
 gridExtra::grid.arrange(p1, p2)
 
-temp_sums <- temp_sums %>% mutate(test_group =case_when(ecoreg %in% c('Northern Allegheny Plateau') ~ 1,
-                                                        ecoreg %in% c('North Central Appalachians', 'Ridge and Valley', 'Northern Appalachian and Atlantic Maritime Highlands') ~ 2,
-                                                        ecoreg %in% c('Northern Piedmont','Middle Atlantic Coastal Plain', 'Atlantic Coastal Pine Barrens','Southeastern Plains') ~3))
+temp_sums <- temp_sums %>% mutate(test_group =case_when(ecoreg %in% c('Northern Allegheny Plateau') ~ 'Piedmont',
+                                                        ecoreg %in% c('North Central Appalachians', 'Ridge and Valley', 'Northern Appalachian and Atlantic Maritime Highlands') ~ 'Appalachians',
+                                                        ecoreg %in% c('Northern Piedmont','Middle Atlantic Coastal Plain', 'Atlantic Coastal Pine Barrens','Southeastern Plains') ~'Coastal_Plains'))
 
 
 test_groups_out <- temp_sums %>% 
@@ -66,7 +65,7 @@ test_groups_out <- temp_sums %>%
   select(seg_id_nat, ecoreg, test_group)
   
 
-write_csv(test_groups_out, 'data/in/DRB_spatial/llo_groups.csv')
+write_csv(test_groups_out, '../river-dl/data_DRB/DRB_spatial/llo_groups.csv')
 
   
 temp_sums %>% group_by(test_group) %>%
