@@ -38,6 +38,7 @@ names(rgcn_stats) <- c('temps','months','segs')
 p1 <- gwn_stats$segs %>% mutate(run = 'GraphWaveNet') %>% bind_rows(rgcn_stats$segs %>% mutate(run = 'RGCN')) %>%
   seg_plotter_sf(., 'rmse_mean') +
   facet_wrap(~run) + labs(color = 'RMSE')
+
 p1
 
 baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GraphWaveNet',shape=edges)
@@ -45,6 +46,7 @@ baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GraphW
 p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
   labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +
   theme(title = element_text(size =8))
+
 p2
 
 
@@ -90,6 +92,27 @@ rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   kableExtra::row_spec(1, bold = T, color = 'grey') %>%
   kableExtra::kable_material(full_width = F)
 
+
+rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
+  filter(partition == 'tst') %>%
+  select(rmse_mean, rmse_top10_mean,rmse_bot10_mean, model) %>%
+  pivot_longer(-model) %>%
+  mutate(name = case_when(name == 'rmse_top10_mean'~ 'Warmest 10%',
+                                                            name == 'rmse_bot10_mean'~ 'Coldest 10%',
+                                                            name== 'rmse_mean'~ 'Overall')) %>%
+  rename(`Temperature Bin` = name) %>%
+  pivot_wider(names_from = model, values_from = value) %>%
+  mutate(`GWN-RGCN` = GWN-RGCN) %>%
+  relocate(RGCN, .after = GWN) %>%
+  kableExtra::kbl(col.names = c('Temperature\nBin','GWN','RGCN','GWN-RGCN')) %>%
+  kableExtra::add_header_above(c('Overall RMSE by Temperature Bin' = 4)) %>%
+  kableExtra::row_spec(2, bold = T, color = "white", background = "#D7261E") %>%
+  kableExtra::row_spec(3, bold = T, color = 'white', background = 'blue') %>%
+  kableExtra::row_spec(1, bold = T, color = 'grey') %>%
+  kableExtra::kable_material(full_width = F)
+
+
 rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
   filter(partition == 'tst') %>%
@@ -109,33 +132,26 @@ rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   kableExtra::row_spec(1, bold = T, color = 'grey') %>%
   kableExtra::kable_material(full_width = F)
 
+
 p1 <- rgcn_stats$temps %>%
-  mutate(model = 'RGCN') %>%
-  bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'tst') %>% select(contains(c('rmse','model'))) %>%
-  select(-contains('logged')) %>%
-  rename(top10_mean = rmse_top10_mean, top10_sd = rmse_top10_sd, bot10_mean = rmse_bot10_mean, bot10_sd= rmse_bot10_sd) %>%
-  pivot_longer(-model, names_to=c('group','metric'), names_sep = '_') %>%
-  pivot_wider(names_from=metric) %>%
-  ggplot(., aes(x = group, y = mean, color = model)) +
+  reshape_metric(.,'rmse') %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_stats$temps %>% reshape_metric(.,'rmse') %>% mutate(model='GWN')) %>%
+  filter(partition =='tst') %>%
+  ggplot(.,aes(x = group, y = mean, color = model)) +
   geom_point() +
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd)) +
   theme_bw() +
   ggtitle('RMSE')
 
-p2<- rgcn_stats$temps %>%
-  mutate(model = 'RGCN') %>%
-  bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'tst') %>% select(contains(c('nse','model'))) %>%
-  select(-contains('logged')) %>%
-  rename(top10_mean = nse_top10_mean, top10_sd = nse_top10_sd, bot10_mean = nse_bot10_mean, bot10_sd= nse_bot10_sd) %>%
-  pivot_longer(-model, names_to=c('group','metric'), names_sep = '_') %>%
-  pivot_wider(names_from=metric) %>%
-  ggplot(., aes(x = group, y = mean, color = model)) +
+p2 <- rgcn_stats$temps %>%
+  reshape_metric(.,'nse') %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_stats$temps %>% reshape_metric(.,'nse') %>% mutate(model='GWN')) %>%
+  filter(partition =='tst') %>%
+  ggplot(.,aes(x = group, y = mean, color = model)) +
   geom_point() +
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd)) +
   theme_bw() +
-  ggtitle('NSE')
+  ggtitle('nse')
 
 gridExtra::grid.arrange(p1,p2, ncol = 1, top = 'Mean and SD across replicates')
 ```
@@ -179,13 +195,14 @@ sig_test <- full %>% ungroup() %>%
   mutate(p.value = round(p.value,3))
 
 full %>% 
-  filter(metric == 'nse_mean') %>%
-  seg_plotter_sf(., 'metric_diff',ll=-.2,ul=.2, diff = T, network_color = 'white') +
+  filter(metric == 'rmse_mean') %>%
+  seg_plotter_sf(., 'metric_diff',ll=-2,ul=2, diff = T, network_color = 'white') +
   facet_grid(holdout~model) 
   
 ggsave('2_analysis/figures/lto_spatial.png', width = 4, height = 5, units = 'in')
 
 full <- full %>% mutate_all(~ifelse(is.nan(.), NA, .))
+
 lto_full_segs <- gwn_lto_min$segs %>% mutate(run = 'Train Hot/Test Cold', model='GWN') %>%
   bind_rows(gwn_lto_max$segs %>% mutate(run = 'Train Cold/Test Hot', model='GWN')) %>%
   bind_rows(rgcn_lto_max$segs %>% mutate(run = 'Train Cold/Test Hot', model = 'RGCN')) %>%
@@ -270,50 +287,37 @@ ggplot(lto_full_temps, aes(x= group, color = run, y = mean))+
   geom_point(position=position_dodge(.3)) +
   geom_errorbar(aes(ymin = mean-sd, ymax=mean+sd), position = position_dodge(.3)) +
   facet_wrap(~model)
-
-
-lto_full_temps %>% #select(temp_group, run, rmse, model) %>%
-  filter(group != 'Normal Temp', partition == 'test', metric %in% c('nse','rmse')) %>%
-  select(-sd) %>%
-  mutate(mean = round(mean, 2)) %>%
-  rename(`Temp. Bin` = group) %>%
-  pivot_wider(names_from = run, values_from = mean) %>%
-  mutate(`Max Dif` = Baseline-`Train Cold/Test Hot`,
-         `Min Dif` = Baseline- `Train Hot/Test Cold`) %>%
-  select(`Temp. Bin`, `Train Cold/Test Hot` = `Max Dif`, `Train Hot/Test Cold` = `Min Dif`, metric, model) %>%
-  arrange(metric, `Temp. Bin`) %>%
-  kableExtra::kbl(caption = 'Overall Change in RMSE from Baseline by Temperature Bin') %>%
-  kableExtra::kable_material(full_width = F)
-
 ```
 
 
 ### LLO Comps
 
 ```{r}
-llo_groups <- read_csv('data/in/DRB_spatial/llo_groups.csv')
+llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv')
 
-rgcn_llo <- metrics %>% map(~combine_replicates('../river-dl/data/out/LLO',., subfolders = T))
+rgcn_llo <- metrics %>% map(~combine_replicates('results/LLO/RGCN',., subfolders = T))
 names(rgcn_llo) <- c('temps','months','segs')
 
-gwn_llo <-  metrics %>% map(~combine_replicates('data/out/LLO_ensemble',., subfolders = T))
+gwn_llo <-  metrics %>% map(~combine_replicates('results/LLO/GWN',., subfolders = T))
 names(gwn_llo) <- c('temps','months','segs')
 
-p1 <- rgcn_llo$segs %>% mutate(model = 'RGCN') %>%
-  bind_rows(gwn_llo$segs %>% mutate(model = 'GWN')) %>%
-  seg_plotter_sf(., 'nse_mean') +
+p1 <- rgcn_llo$segs %>% mutate(model = 'RGCN') %>% filter(is.finite(rmse_mean)) %>%
+  bind_rows(gwn_llo$segs %>% mutate(model = 'GWN') %>% filter(is.finite(rmse_mean))) %>%
+  seg_plotter_sf(., 'rmse_mean') +
   facet_wrap(~model, nrow =1)
 
-rgcn_diff <- seg_error_diff(rgcn_stats$segs, rgcn_llo$segs %>%select(-run), 'Baseline', 'Holdout')
+p1
 
-gwn_diff <- seg_error_diff(gwn_stats$segs, gwn_llo$segs %>% select(-run), 'Baseline', 'Holdout')
+rgcn_diff <- seg_error_diff(rgcn_stats$segs, rgcn_llo$segs %>% select(-run), 'Baseline', 'Holdout', shape = edges) %>% filter(is.finite(metric_diff))
+
+gwn_diff <- seg_error_diff(gwn_stats$segs, gwn_llo$segs %>% select(-run), 'Baseline', 'Holdout', shape = edges) %>% filter(is.finite(metric_diff))
 
 full <- gwn_diff %>% select(seg_id_nat, partition, metric, metric_diff) %>% mutate(model = 'GWN') %>%
   bind_rows(rgcn_diff %>% select(seg_id_nat, partition, metric, metric_diff) %>% mutate(model = 'RGCN'))
 
 p2 <-full %>% 
   mutate(metric_diff = ifelse(metric_diff > 3, 3, ifelse(metric_diff < -1, -1, metric_diff))) %>%
-  filter(metric == 'nse_mean', partition == 'test') %>%
+  filter(metric == 'rmse_mean', partition == 'tst') %>%
   seg_plotter_sf(., 'metric_diff') +
   #scale_color_gradient2(na.value = 'white', mid = 'grey80', name = 'RMSE\nDifference', breaks = c(-3,-1.5,0,1.5,3),labels = c('<-3', '-1.5', "0", '1.5', '>3')) +
   scale_color_gradient2(na.value = 'white', mid = 'grey80', name = 'RMSE\nDifference') +
@@ -323,28 +327,19 @@ g <- gridExtra::grid.arrange(p1,p2, nrow =2)
 
 ggsave('figures/llo_spatial.png',plot=g, width = 4,height = 6, units = 'in')  
 
+rgcn_base_llo <- rgcn_stats$segs %>% left_join(llo_groups) %>% mutate(model = 'RGCN')
 
-rgcn_base_llo <- rgcn_stats$segs %>% mutate(test_group = case_when(seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 1]~'group_1',
-                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 2]~'group_2',
-                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 3]~'group_3'),
-                                            model = 'RGCN') %>%
-  select(seg_id_nat, rmse_mean, test_group, model)
+gwn_base_llo <- gwn_stats$segs %>% left_join(llo_groups) %>% mutate(model = 'GWN')
 
-gwn_base_llo <- gwn_stats$segs %>% mutate(test_group = case_when(seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 1]~'group_1',
-                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 2]~'group_2',
-                                                                   seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 3]~'group_3'),
-                                          model = 'GWN') %>%
-  select(seg_id_nat, rmse_mean, test_group, model)
-
+#### Appalachains and Piedmont are mislabelled, need to correct for plotting.
 full_reshape <- rgcn_diff %>% mutate(model = 'RGCN') %>%
   bind_rows(gwn_diff %>% mutate(model = 'GWN')) %>%
-  mutate(test_group = case_when(seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 1]~'Headwaters',
-                                seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 2]~'Piedmont',
-                                seg_id_nat %in% llo_groups$seg_id_nat[llo_groups$test_group == 3]~'Coastal'))
-
+  left_join(llo_groups) %>%
+  mutate(test_group=factor(test_group, levels = c('Coastal_Plains','Appalachians','Piedmont'),
+                           labels = c('Coastal','Piedmont', 'Headwaters')))
 
 full_reshape %>%
-  filter(partition == 'test') %>%
+  filter(partition == 'tst') %>%
   group_by(model, metric) %>%
   summarise(mean_diff = round(mean(metric_diff, na.rm = T),3),
             sd_dff = round(sd(metric_diff, na.rm = T),3),
@@ -362,7 +357,7 @@ sig_test <- full_reshape %>%
   mutate(p.value = round(p.value,4))
 
 sig_test <- full_reshape %>%
-  filter(!is.na(metric_diff), partition == 'test') %>%
+  filter(!is.na(metric_diff), partition == 'tst') %>%
   #select(-c(Baseline, Holdout)) %>%
   #pivot_wider(names_from = model, values_from = metric_diff) %>%
   group_by(test_group, model, metric) %>%
@@ -378,10 +373,9 @@ diff <- full_reshape %>% group_by(model, metric, test_group) %>%
             Diff = Holdout-Baseline) %>%
   mutate(Diff = round(Diff,2))
   
-full_reshape %>% filter(!is.na(metric_diff), partition == 'test', metric == 'rmse_mean') %>%
+full_reshape %>% filter(!is.na(metric_diff), partition == 'tst', metric == 'rmse_mean') %>%
   select(-metric_diff) %>%
   pivot_longer(c(Baseline, Holdout)) %>%
-  mutate(test_group = factor(test_group, levels = c('Coastal', 'Piedmont','Headwaters'))) %>%
   ggplot(., aes(x = value, y = test_group)) +
     geom_density_ridges(aes(fill=name),
     quantile_lines = TRUE, quantiles = .5, scale = 0.9, alpha = 0.7,
@@ -397,12 +391,12 @@ full_reshape %>% filter(!is.na(metric_diff), partition == 'test', metric == 'rms
   theme(legend.position = 'bottom') +
   labs(title = "Test Error Distribution for\nLocation Holdouts")
 
-ggsave('2_analysis/figures/LTO_ridges.png',width = 3.5,height=5, units = 'in')
+ggsave('../drb_gwnet/2_analysis/figures/LTO_ridges.png',width = 3.5,height=5, units = 'in')
   
-full_reshape %>% filter(!is.na(metric_diff), partition == 'test', metric == 'nse_mean') %>%
+full_reshape %>% filter(!is.na(metric_diff), partition == 'tst', metric == 'nse_mean') %>%
   select(-metric_diff) %>%
   pivot_longer(c(Baseline, Holdout)) %>%
-  mutate(test_group = factor(test_group, levels = c('Coastal', 'Piedmont','Headwaters'))) %>%
+  mutate(test_group = factor(test_group, levels = c('Coastal_Plains','Piedmont','Appalachians'))) %>%
   ggplot(., aes(x = value, y = test_group)) +
     geom_density_ridges(aes(fill=name),
     quantile_lines = TRUE, quantiles = .5, scale = 0.9, alpha = 0.7,
@@ -417,9 +411,28 @@ full_reshape %>% filter(!is.na(metric_diff), partition == 'test', metric == 'nse
   theme_bw()
 
 
-
 ggsave('figures/llo_dist.png',width = 5.5, height = 4, units = 'in')
+
+llo_full_temps <- 
+  gwn_llo$temps %>% mutate(model='GWN') %>%
+  bind_rows(rgcn_llo$temps %>% mutate(model = 'RGCN')) %>%
+  bind_rows(gwn_stats$temps %>% mutate(run = 'Baseline') %>% mutate(model = 'GWN')) %>%
+  bind_rows(rgcn_stats$temps %>% mutate(run = 'Baseline', model = 'RGCN')) %>%
+  filter(partition == 'tst') %>%
+  select(contains(c('rmse','model','run'))) %>%
+  select(-contains(c('logged'))) %>%
+  rename(top10_mean = rmse_top10_mean, top10_sd = rmse_top10_sd, bot10_mean = rmse_bot10_mean, bot10_sd= rmse_bot10_sd) %>%
+  pivot_longer(-c(model,run), names_to=c('group','metric'), names_sep = '_') %>%
+  pivot_wider(names_from=metric)
+
+ggplot(llo_full_temps, aes(x= group, color = run, y = mean))+
+  geom_point(position=position_dodge(.3)) +
+  geom_errorbar(aes(ymin = mean-sd, ymax=mean+sd), position = position_dodge(.3)) +
+  facet_wrap(~model)
 ```
+
+
+
 
 ### PI3NN check
 ```{r}
