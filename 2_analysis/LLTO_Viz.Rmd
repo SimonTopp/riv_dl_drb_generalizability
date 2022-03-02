@@ -33,6 +33,21 @@ names(gwn_stats) <- c('temps','months','segs')
 rgcn_stats <- metrics %>% map(~combine_replicates('results/baseline/RGCN',.))
 names(rgcn_stats) <- c('temps','months','segs')
 
+gwn_reps <- read_replicates('results/baseline/GWN', 'overall_metrics')
+rgcn_reps <- read_replicates('results/baseline/RGCN', 'overall_metrics')
+rgcn_hot_reps <- read_replicates('results/LTO/GWN/max', 'overall_metrics')
+
+t.test(rgcn_hot_reps$rmse[rgcn_hot_reps$partition=='tst'],rgcn_reps$rmse[rgcn_reps$partition=='tst'], alternative='greater')
+check <- t.test(rgcn_reps$rmse[rgcn_reps$partition=='tst']) %>% broom::tidy() %>%
+  mutate(model = 'rgcn') %>%
+  bind_rows(t.test(rgcn_hot_reps$rmse[rgcn_reps$partition=='tst']) %>% broom::tidy() %>%
+  mutate(model = 'gwn'))
+
+ggplot(check, aes(x = model, y = estimate))+
+  geom_point()+
+  geom_errorbar(aes(ymin = conf.low, ymax= conf.high))
+t.test(gwn_reps$rmse[gwn_reps$partition=='tst'],rgcn_reps$rmse[rgcn_reps$partition=='tst'], alternative='less')
+
 ## Figure for overall difference between the two models
 
 p1 <- gwn_stats$segs %>% mutate(run = 'GraphWaveNet') %>% bind_rows(rgcn_stats$segs %>% mutate(run = 'RGCN')) %>%
@@ -47,7 +62,6 @@ p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'met
   labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +
   theme(title = element_text(size =8))
 
-p2
 
 
 p3 <- rgcn_stats$months %>% filter(partition == 'tst') %>% mutate(model= 'RGCN') %>%
@@ -188,7 +202,7 @@ full_temps <- rgcn_diff_max %>% mutate(model = 'RGCN', holdout = 'Max Temps') %>
   bind_rows(gwn_diff_min  %>% mutate(model = 'GWN', holdout = 'Min Temps')) %>%
   select(seg_id_nat, partition, metric, Baseline, Holdout, metric_diff, model,holdout)
 
-sig_test_temps <- full %>% ungroup() %>%
+sig_test_temps <- full_temps %>% ungroup() %>%
   group_by(holdout, model, metric, partition) %>%
   nest() %>%
   mutate(wilcox = map(data, ~wilcox.test(.$Baseline, .$Holdout, paired =T) %>% broom::tidy())) %>%
@@ -256,6 +270,7 @@ lto_full_temps %>%
   geom_errorbar(aes(ymin = mean-sd, ymax=mean+sd), position = position_dodge(.3)) +
   facet_wrap(~model)
 
+
 lto_full_temps %>%
   reshape_metric(.,'rmse',c('partition','run','model')) %>%
   filter(is.finite(mean)) %>%
@@ -282,8 +297,6 @@ p1 <- rgcn_llo$segs %>% mutate(model = 'RGCN') %>% filter(is.finite(rmse_mean)) 
   seg_plotter_sf(., 'rmse_mean') +
   facet_wrap(~model, nrow =1)
 
-p1
-
 rgcn_diff <- seg_error_diff(rgcn_stats$segs, rgcn_llo$segs %>% select(-run), 'Baseline', 'Holdout', shape = edges) %>% filter(is.finite(metric_diff))
 
 gwn_diff <- seg_error_diff(gwn_stats$segs, gwn_llo$segs %>% select(-run), 'Baseline', 'Holdout', shape = edges) %>% filter(is.finite(metric_diff))
@@ -301,7 +314,7 @@ p2 <-full_diff_llo %>%
 
 g <- gridExtra::grid.arrange(p1,p2, nrow =2)
 
-ggsave('figures/llo_spatial.png',plot=g, width = 4,height = 6, units = 'in')  
+ggsave('../drb_gwnet/2_analysis/figures/llo_spatial.png',plot=g, width = 4,height = 6, units = 'in')  
 
 #### Appalachains and Piedmont labels are swapped, need to correct for plotting.
 llo_full_segs <- rgcn_diff %>% mutate(model = 'RGCN') %>%
