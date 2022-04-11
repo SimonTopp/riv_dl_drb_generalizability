@@ -12,16 +12,20 @@ library(sf)
 library(dataRetrieval)
 library(nhdplusTools)
 library(reticulate)
+mapviewOptions(fgb = F)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
 ```{r, echo = F,eval = F, include = F}
-temp_obs <- read_csv('../data/in/temperature_observations_drb.csv') %>% filter(date > '1980-01-01')
-res_info <- readRDS('../data/in/DRB_spatial/segments_relative_to_reservoirs.rds')
-
-spatial <- readRDS('../data/in/DRB_spatial/network.rds')
+setwd('../river-dl')
+temp_obs <- read_csv('data/in/temperature_observations_drb.csv') %>% filter(date > '1980-01-01')
+res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds')
+spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
 edges <- spatial$edges %>% st_as_sf()
+
+edges %>% left_join(res_info%>%select(-subseg_seg)) %>%
+  mapview(zcol='type_res')
 
 temp_grouped <- temp_obs %>%
   group_by(seg_id_nat, site_id) %>%
