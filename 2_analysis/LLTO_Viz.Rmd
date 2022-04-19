@@ -865,192 +865,45 @@ ggplot(nse_seg_summary, aes(y=run, x=performance_change)) +
 ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_Change_Segs.png',width = 6.5,height=3.5, units = 'in')
 ```
 
-
-### PI3NN check
+## Look at training times, etc
 
 ```{r}
-full_temps <- rgcn_llo$temps %>% mutate(model = "RGCN") %>%
-  bind_rows(gwn_llo$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'test') %>%
-  pivot_longer(c(contains('sd'),contains('mean')),
-               names_to=c('metric','type'),
-               names_sep = '_') %>%
-  pivot_wider(names_from='type', values_from = 'value') %>%
-  bind_rows(lto_full_temps)
+finetune_logs <- view_train_longs('../river-dl/results/baseline/GWN') %>%
+  mutate(model = 'GWN') %>%
+  bind_rows(view_train_longs('../river-dl/results/baseline/RGCN') %>%
+              mutate(model='RGCN'))
 
-pi_temps <- full_temps %>% 
-  select(group, run, model, metric, mean) %>%
-  filter(metric %in% c('piw','picp','rmse')) %>%
-  pivot_wider(names_from = metric,values_from =mean )
+training_times <- finetune_logs %>%group_by(model) %>%
+  summarise(time = median(time),
+            inf_time = median(val_time,na.rm=T))
 
-ggplot(pi, aes(x = piw, y = picp, color = picp)) +
-  geom_point(aes(shape = model))
+epochs <- finetune_logs %>%group_by(model, run) %>%
+  summarise(epochs = max(epoch)) %>%
+  group_by(model) %>%
+  summarise(Epochs = mean(epochs))
 
-full_segs <- gwn_lto_min$segs %>% mutate(run = 'Train Hot/Test Cold', model='GWN') %>%
-  bind_rows(gwn_lto_max$segs %>% mutate(run = 'Train Cold/Test Hot', model='GWN')) %>%
-  bind_rows(rgcn_lto_max$segs %>% mutate(run = 'Train Cold/Test Hot', model = 'RGCN')) %>%
-  bind_rows(rgcn_lto_min$segs %>% mutate(run = 'Train Hot/Test Cold', model = 'RGCN')) %>%
-  bind_rows(gwn_stats$segs %>% mutate(run = 'Baseline') %>% mutate(model = 'GWN')) %>%
-  bind_rows(rgcn_stats$segs %>% mutate(run = 'Baseline', model = 'RGCN')) %>%
-  bind_rows(gwn_llo$segs %>% mutate(model = 'GWN')) %>%
-  bind_rows(rgcn_llo$segs %>% mutate(model = 'RGCN')) %>%
-  filter(partition == 'test') %>%
-  pivot_longer(c(contains('sd'),contains('mean')),
-               names_to=c('metric','type'),
-               names_sep = '_') %>%
-  pivot_wider(names_from='type', values_from = 'value')
+ggplot(finetune_logs, aes(x=epoch)) +
+  geom_line(aes(y=loss, color = 'Loss', group=run), alpha = .3) +
+  geom_line(aes(y=val_loss, color = "Val Loss", group = run), alpha = .3) +
+  facet_wrap(~model)
 
+### Trainable params rgcn=2681, gwn=373851
+table <- tibble('model'='RGCN',"params"=2681, 'hyperparameters' = 6) %>%
+  bind_rows(tibble('model'='GWN',"params"=373851, 'hyperparameters' = 11)) %>%
+  left_join(training_times) %>%
+  left_join(epochs) %>%
+  select(model, time, inf_time, Epochs, params, hyperparameters) %>%
+  mutate_if(is.numeric, ~round(.,1))
 
-pi <- full_segs %>% 
-  select(run, model, metric, mean) %>%
-  filter(metric %in% c('piw','picp','rmse')) %>%
-  pivot_wider(names_from = metric,values_from =mean ) %>%
-  na.omit() %>%
-  mutate(run=factor(run, 
-                    levels = c('Baseline', 'Train Hot/Test Cold', 'Train Cold/Test Hot', 'LLO1','LLO2', 'LLO3'), 
-                    labels = c('Baseline', 'Train Hot/Test Cold', 'Train Cold/Test Hot', 'Headwater Holdout',
-                                 'Piedmont Holdout', 'Coastal Holdout')))
-
-overall <- pi_temps %>% filter(model == 'RGCN', group == 'Overall') %>%
-  mutate(run=factor(run, 
-                    levels = c('Baseline', 'Train Hot/Test Cold', 'Train Cold/Test Hot', 'LLO1','LLO2', 'LLO3'), 
-                    labels = c('Baseline', 'Train Hot/Test Cold', 'Train Cold/Test Hot', 'Headwater Holdout',
-                                 'Piedmont Holdout', 'Coastal Holdout')))
-
-ggplot(pi %>% filter(model =='RGCN'), aes(x= picp)) +
-  geom_histogram(alpha=.7) +
-  geom_vline(aes(xintercept=0.9, color = 'Target PICP')) +
-  geom_vline(data = overall, aes(xintercept = picp, color = 'Overall PICP'), alpha = .9) +
-  scale_color_manual(values = c('black', 'red')) +
-  facet_wrap(~run, scales = 'free_y') +
-  theme_bw() +
-  theme(legend.position = 'bottom') +
-  labs(x = "Prediction Interval Coverage Probablity", title = 'Prediction Interval Coverage Probablity (PICP)\nacross River Segments', color = '')
-
-ggsave('2_analysis/figures/picp.png', width = 5, height = 4, units = 'in')
-  
-ggplot(pi, aes(x = rmse, y = picp)) +
-  geom_hex() +
-  #geom_point() +
-  scale_x_log10()+
-  facet_wrap(~run)
-```
-
-
-### PI3NN Sensitivity to pre training and early stopping    
-```{r}
-metrics <- c('overall_metrics','month_metrics','reach_metrics')
-
-pinn_grid <- metrics %>% map(~pinsploder('data/out/ci_grid_search',.))
-names(pinn_grid) <- c('overall', 'month', 'segs')
-
-p1 <- ggplot(pinn_grid$segs, aes(x = picp, y = early_stopping, fill = early_stopping)) +
-  geom_density_ridges(
-    quantile_lines = TRUE, quantiles = .5, scale = 2, alpha = 0.7,
-    vline_size = 1) +
-  theme(legend.position = 'none')+
-  geom_vline(aes(xintercept = .9), color = 'red') +
-  facet_grid(partition~pt_epochs) +
-  ggtitle('PI Coverage Probability')
-
-p2 <- ggplot(pinn_grid$segs, aes(x = piw, y = early_stopping, fill = early_stopping)) +
-  geom_density_ridges(
-    quantile_lines = TRUE, quantiles = .5, scale = 2, alpha = 0.7,
-    vline_size = 1) +
-  theme(legend.position = 'none')+
-  facet_grid(partition~pt_epochs) +
-  ggtitle('Prediction interval width')
-
-g <- gridExtra::grid.arrange(p1, p2, nrow = 2)
-
-ggsave('2_analysis/figures/ci_grid_segs.png', plot = g,width = 7, height = 5, units='in')
-
-p1 <- ggplot(pinn_grid$overall, aes(x=pt_epochs, y = early_stopping, fill = picp)) +
-  geom_raster() +
-  geom_text(aes(label=round(picp,2))) +
-  scale_fill_gradient2(midpoint = .9) +
-  theme(legend.position = 'bottom') +
-  facet_grid(group~partition) +
-  ggtitle('PI Coverage Probability')
-
-p2 <- ggplot(pinn_grid$overall, aes(x=pt_epochs, y = early_stopping, fill = piw)) +
-  geom_raster() +
-  geom_text(aes(label=round(piw,2))) +
-  scale_fill_viridis_c() +
-  theme(legend.position = 'bottom') +
-  facet_grid(group~partition) +
-  ggtitle('Prediction interval width')
-
-g <- gridExtra::grid.arrange(p1,p2, nrow = 1)
-
-ggsave('2_analysis/figures/ci_grid_temps.png', plot = g,width = 10, height = 9, units='in')
-
-
- p1 <- ggplot(pinn_grid$month, aes(x=pt_epochs, y = early_stopping, fill = picp)) +
-  geom_raster() +
-  geom_text(aes(label=round(picp,2))) +
-  scale_fill_gradient2(midpoint = .9) +
-  facet_grid(date~partition) +
-  ggtitle('PI Coverage Probability')
-
-
-p2 <- ggplot(pinn_grid$month, aes(x=pt_epochs, y = early_stopping, fill = piw)) +
-  geom_raster() +
-  geom_text(aes(label=round(piw,2))) +
-  scale_fill_viridis_c() +
-  facet_grid(date~partition) +
-  ggtitle('Prediction interval width')
-
-g <- gridExtra::grid.arrange(p1,p2, nrow = 1)
-ggsave('2_analysis/figures/ci_grid_months.png', plot = g,width = 10, height = 15, units='in')
-```
-
-
-
-
-## Make some plots that show change in segment RMSE as 
-
-```{r pressure, echo=FALSE}
-full_log <- llo_rmse %>% full_join(edges %>% st_set_geometry(NULL)) %>% mutate(comp = 'Leave Location Out') %>%
-  bind_rows(baseline %>% full_join(edges %>% st_set_geometry(NULL)) %>% mutate(comp = 'Baseline')) 
-
-p1 <- full_log %>%
-  seg_plotter_sf(., 'rmse') + 
-  facet_wrap(~comp) + 
-  ggtitle('RMSE')
-
-check <- full_log %>% 
-  select(comp,seg_id_nat, rmse) %>% 
-  filter(!is.na(seg_id_nat)) %>% 
-  pivot_wider(names_from=comp, values_from = rmse) %>%
-  mutate(metric_diff = Baseline-`Leave Location Out`) %>%
-  left_join(full_log %>% select(run, seg_id_nat) %>% filter(run != 'baseline'))
-
-p2 <- check %>% mutate(rmse_diff = case_when(rmse_diff > 5 ~ 5,
-                                       rmse_diff < -5 ~ -5,
-                                       is.numeric(rmse_diff)~rmse_diff)) %>%
-  seg_plotter_sf(., 'rmse_diff') +
-  scale_color_gradient2(na.value = 'white', mid = 'grey90') +
-  ggtitle('RMSE Difference \n(Baseline - LLO)')
-
-medians <- full_log %>% group_by(comp) %>%
-  summarise(med = median(rmse, na.rm = T))
-
-p3 <- ggplot(full_log, aes(x = rmse)) + 
-  geom_density(fill = 'grey70') +
-  geom_vline(data = medians, aes(xintercept =med), color = 'red') +
-  facet_wrap(~comp, nrow = 1, scales = 'free_x') +
-  theme_minimal()
-
-p4 <- ggplot(check, aes(x = rmse_diff, fill = run)) + 
-  geom_density(alpha = .7) +
-  geom_vline(aes(xintercept =median(rmse_diff, na.rm=T)), color = 'red') +
-  scale_fill_viridis_d(labels = c('Headwaters', 'Piedmont', 'Coastal'))+
-  labs(fill = 'Test Group', x = 'rmse difference') +
-  theme_minimal()
-
-layout <- rbind(c(1,1,1,2,2),c(1,1,1,2,2),c(3,3,4,4,4))
-gridExtra::grid.arrange(p1,p2, p3,p4, layout_matrix = layout) #nrow = 2, widths = c(.66,.33), heights = c(.66,.33))
+colors <- viridis::viridis(10, end = .7)
+table %>%
+  kableExtra::kbl(col.names = c("Model","Training Time\nper Epoch", "Inference Time\nper Epoch", "Mean Epochs \npre Early Stopping", 'Learnable\nParameters','Hyperparameters')) %>%
+  #kableExtra::add_header_above(c('Overall RMSE by Temperature Bin' = 4)) %>%
+  kableExtra::row_spec(1, color = "white", background = colors[1]) %>%
+  kableExtra::row_spec(2, color = 'white', background = colors[10]) %>%
+  kableExtra::kable_styling()
+  #kableExtra::row_spec(1, bold = T, color = 'grey') %>%
+ # kableExtra::kable_material(full_width = F)
 
 ```
 
