@@ -35,12 +35,13 @@ names(rgcn_stats) <- c('temps','months','segs')
 
 gwn_reps <- read_replicates('results/baseline/GWN', 'overall_metrics') ## Best, 9
 rgcn_reps <- read_replicates('results/baseline/RGCN', 'overall_metrics') ## Best, 7
-rgcn_hot_reps <- read_replicates('results/LTO/GWN/max', 'overall_metrics')
 
 shapiro.test(rgcn_reps$rmse[rgcn_reps$partition=='tst'])
 shapiro.test(gwn_reps$rmse[gwn_reps$partition=='tst'])
 
-t.test(rgcn_hot_reps$rmse[rgcn_hot_reps$partition=='tst'],rgcn_reps$rmse[rgcn_reps$partition=='tst'], alternative='greater')
+t.test(gwn_reps$rmse[gwn_reps$partition=='tst'],rgcn_reps$rmse[rgcn_reps$partition=='tst'])
+
+t.test(gwn_reps$rmse_top10[gwn_reps$partition=='tst'],rgcn_reps$rmse_top10[rgcn_reps$partition=='tst'])
 
 check <- t.test(rgcn_reps$rmse[rgcn_reps$partition=='tst']) %>% broom::tidy() %>%
   mutate(model = 'rgcn') %>%
@@ -62,6 +63,17 @@ p1 <- gwn_stats$segs %>% mutate(run = 'GraphWaveNet') %>% bind_rows(rgcn_stats$s
 p1
 
 baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GraphWaveNet',shape=edges)
+
+
+###Take a look at how performance varies with reach type
+res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds')
+res_metrics <- baseline_diff %>% left_join(res_info) %>%
+  mutate(res_group = if_else(type_res %in% c('contains_reservoir',"within_reservoir", "downstream of reservoir (1)","downstream of reservoir (2)"), 'Impacted','Not Impacted', "reservoir_outlet_reach")) %>%
+  group_by(res_group,metric) %>%
+  summarise(RGCN = median(RGCN, na.rm=T),
+            GraphWaveNet = median(GraphWaveNet, na.rm=T),
+            count = n())
+
 
 p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
   labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +
@@ -902,8 +914,7 @@ table %>%
   kableExtra::row_spec(1, color = "white", background = colors[1]) %>%
   kableExtra::row_spec(2, color = 'white', background = colors[10]) %>%
   kableExtra::kable_styling()
-  #kableExtra::row_spec(1, bold = T, color = 'grey') %>%
- # kableExtra::kable_material(full_width = F)
+
 
 ```
 
