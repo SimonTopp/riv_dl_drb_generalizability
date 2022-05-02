@@ -82,8 +82,8 @@ p2<- temp_sums %>%
   ggthemes::theme_map() +
   theme(legend.position = c(.8,.5)) #theme_minimal()
 
-
 g <- gridExtra::grid.arrange(p1,p2, nrow=1)
+
 
 ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.png',plot=g, width = 7.5, height=6, units = 'in', dpi=200)
 
