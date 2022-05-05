@@ -21,7 +21,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Baseline Comparisons
 
 ```{r}
-setwd('../river-dl')
+
 spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
 edges <- spatial$edges %>% st_as_sf()
 
@@ -603,6 +603,33 @@ ggplot(rmse_temp_summary, aes(x=run, y=performance_change,fill = model)) +
 
 ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_Change_temps.png',width = 6.5,height=3.5, units = 'in')
 
+
+##### Just hot and drought for poster
+rmse_temp_summary %>%
+  filter(run %in% c("Drought","Train Cold/Test Hot"),
+         group %in% c("Overall","Warmest 10%")) %>%
+  mutate(run= factor(run, levels= c("Drought","Train Cold/Test Hot"), 
+                     labels=c("Dryer Conditions","Warmer Conditions")),
+         group=factor(group, levels=c("Overall","Warmest 10%"),
+                      labels=c("Overall Performance","Warmest 10% of Predictions"))) %>%
+  ggplot(., aes(x=run, y=performance_change,fill = model)) +
+    geom_col(position='dodge')+
+    geom_hline(aes(yintercept=0),color = 'black') +
+    scale_fill_viridis_d(end=.6)+
+    theme_bw() +
+    theme(
+      #panel.grid.major.x = element_blank(),
+      #panel.border = element_blank(),
+      #axis.ticks.x = element_blank(),
+      legend.position = 'bottom'
+    ) +
+    coord_flip() +
+    labs(x="",y="Δ RMSE (ºC)", title="Loss of Performance when\nGeneralizing to...", fill = "Model") +
+    facet_wrap(~group,ncol=1)
+
+ggsave('../drb_gwnet/2_analysis/figures/PosterOverallPerformance.png',width = 4,height=6, units = 'in', dpi=300)
+
+
 rmse_seg_summary <- drought_full_segs %>% 
   reshape_metric(.,'rmse',c('seg_id_nat','partition','run','model')) %>%
   filter(is.finite(mean)) %>%
@@ -611,9 +638,13 @@ rmse_seg_summary <- drought_full_segs %>%
     reshape_metric(.,'rmse',c('seg_id_nat','partition','run','model')) %>%
     filter(is.finite(mean))) %>%
   bind_rows(lto_full_segs%>% 
-    reshape_metric(.,'rmse',c('seg_id_nat','partition','run','model')))  %>%
-  distinct()
-
+    reshape_metric(.,'rmse',c('seg_id_nat','partition','run','model')) %>%
+      filter(is.finite(mean)))  %>%
+  filter(is.finite(sd)) %>%
+  distinct() %>%
+  mutate(group= factor(group, levels=c('rmse','rmse_bot10','rmse_top10'),
+                       labels=c('Overall','Coldest 10%','Warmest 10%')),
+         run = factor(run, levels = c("Train Hot/Test Cold","Train Cold/Test Hot", "Drought","Coastal","Piedmont","Headwaters",'Baseline')))
 
 sig_test_summary_absolute <- rmse_seg_summary %>% ungroup() %>%
   filter(!is.na(sd)) %>%
@@ -649,9 +680,22 @@ ggplot(rmse_seg_summary, aes(y=run, x=mean)) +
   facet_wrap(~group,nrow=1)  +
   labs(x= 'Perfomance Across Reaches (RMSE °C)',y= 'Model Run',fill = 'Model') +
   theme_bw() +
-  theme(legend.position = 'top')
+  theme(legend.position = 'top') 
 
-ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_Absolute_Segs.png',width = 6.5,height=3.5, units = 'in')
+ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_Paired_Segs.png',width = 6.5,height=3.5, units = 'in')
+
+rmse_seg_summary %>%
+  filter(run %in% c("Baseline","Drought","Train Cold/Test Hot"),
+         group =='Overall')%>%
+ggplot(., aes(y=run, x=mean)) +
+  stat_density_ridges(aes(fill=model),quantile_lines = TRUE, quantiles = c(.25,.5,.75), alpha = 0.5, scale = 1.3) +
+  scale_fill_viridis_d(end=.7) +
+  coord_cartesian(xlim=c(.5,3)) +
+  #geom_text(data=sig_test_paired,aes(x=0,y=run,label=sig_symbol),color='red',vjust=-1) +
+  facet_wrap(~group,nrow=1)  +
+  labs(x= 'Perfomance Across Reaches (RMSE °C)',y= 'Model Run',fill = 'Model') +
+  theme_bw() +
+  theme(legend.position = 'top') 
 
 baseline_seg <- rmse_seg_summary %>% filter(run == 'Baseline') %>% 
   select(-run) %>%
@@ -659,12 +703,9 @@ baseline_seg <- rmse_seg_summary %>% filter(run == 'Baseline') %>%
 
 rmse_seg_summary <- rmse_seg_summary %>%
   filter(run!='Baseline',!is.na(sd)) %>%
-  left_join(baseline) %>%
-  mutate(performance_change = baseline_mean-mean,
-         group= factor(group, levels=c('rmse','rmse_bot10','rmse_top10'),
-                       labels=c('Overall','Coldest 10%','Warmest 10%')),
-         run = factor(run, levels = c("Train Hot/Test Cold","Train Cold/Test Hot", "Drought","Coastal","Piedmont","Headwaters"))
-)
+  left_join(baseline_seg) %>%
+  mutate(performance_change = baseline_mean-mean)
+
 # 
 # sig_test_summary <- rmse_seg_summary %>% ungroup() %>%
 #   group_by(run, group) %>%
@@ -701,12 +742,38 @@ ggplot(rmse_seg_summary, aes(y=run, x=performance_change)) +
   stat_density_ridges(aes(fill=model),quantile_lines = TRUE, quantiles = c(.5), alpha = 0.5, scale = 1.3) +
   scale_fill_viridis_d(end=.7) +
   geom_vline(aes(xintercept=0),color = 'red') +
-  coord_cartesian(c(-5,2.5)) +
+  #coord_cartesian(c(-5,2.5)) +
   geom_text(data=sig_test_summary,aes(x=2,y=run,label=sig_symbol),color='red',vjust=-1) +
   facet_wrap(~group,nrow=1)  +
   labs(x= 'Change in Perfomance Across Reaches (RMSE °C)',y= 'Holdout Experiment',fill = 'Model') +
   theme_bw() +
   theme(legend.position = 'top')
+
+ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_Change_Segs.png',width = 6.5,height=3.5, units = 'in')
+
+rmse_seg_summary %>%
+  filter(run == 'Drought'|run=='Train Cold/Test Hot') %>%
+  group_by(run, model, group) %>%
+  summarise(performance_change = median(performance_change, na.rm=T)) %>%
+  ggplot(., aes(x=run, y=performance_change)) +
+  #geom_segment( aes(x=run, xend=run, y=0, yend=performance_change), position = position_dodge(.3)) +
+  #geom_point(size=4, position = position_dodge(.3)) +
+  geom_col(aes(fill = model),position='dodge')+
+  geom_hline(aes(yintercept=0),color = 'black') +
+  scale_fill_viridis_d(end=.6)+
+  #geom_text(data=sig_test_summary,aes(x=run,y=-1,label=sig_symbol),color='red',vjust=-1) +
+  theme_bw() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = 'top'
+  ) +
+  coord_flip()+#ylim=c(-1.5,.5)) +
+  #coord_cartesian(xlim=c(-1,.5)) +
+  xlab("") +
+  ylab("Change in RMSE from Baseline (Negative == Worse Performance)") +
+  facet_wrap(~group)
 
 ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_Change_Segs.png',width = 6.5,height=3.5, units = 'in')
 ```
