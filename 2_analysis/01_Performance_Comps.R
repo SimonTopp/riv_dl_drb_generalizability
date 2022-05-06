@@ -174,6 +174,20 @@ reshape_metric(full_segs, 'rmse',c('partition','run','model','seg_id_nat')) %>%
   theme(legend.position = 'top') 
 
 ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_Segments.png',width = 6.5,height=3.5, units = 'in')
+
+reshape_metric(full_segs, 'nse',c('partition','run','model','seg_id_nat')) %>%
+  filter(group =='Overall')%>%
+  ggplot(., aes(x=mean,color = model)) +
+  stat_ecdf(geom = "step") +
+  #stat_density_ridges(aes(fill=model),quantile_lines = TRUE, quantiles = c(.5), alpha = 0.5, scale = 1.3) +
+  #scale_fill_viridis_d(end=.7) +
+  coord_cartesian(c(0,1)) +
+  #geom_text(data=sigs_segments_overall,aes(x=.1,y=run,label=sig_symbol),color='red',vjust=-1) +
+  facet_wrap(~run,scales='free')  +
+  labs(x= 'Distribution of Reach Scale RMSE (°C)',y= 'Model Run',fill = 'Model') +
+  theme_bw() +
+  theme(legend.position = 'top') 
+
 ## Segment Differences 
 sigs_segments_differences <- reshape_metric(full_segs, 'rmse',c('partition','run','model','seg_id_nat'), difference = T) %>%
   ungroup() %>%
