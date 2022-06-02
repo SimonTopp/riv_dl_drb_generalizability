@@ -199,11 +199,24 @@ combine_replicates = function(folder, pattern,subfolders = F){
   
   if(subfolders){
     for(i in c(1:length(files))){
-      run = str_split(files[i], pattern = '/')[[1]] %>% tail(3) %>% .[1]
+      dir = tolower(files[i])
+      #run = str_split(files[i], pattern = '/')[[1]] %>% tail(3) %>% .[1]
+      model = ifelse(grepl('rgcn',dir), 'RGCN',
+              ifelse(grepl('rs_adj',dir), 'GWN_rs_adj',
+              ifelse(grepl('no_pt',dir), 'GWN_no_pt','GWN')))
+      scenario = ifelse(grepl('baseline',dir),'Baseline',
+                 ifelse(grepl('min', dir),'Train Hot/Test Cold',
+                 ifelse(grepl('max', dir),'Train Cold/Test Hot',
+                 ifelse(grepl('drought', dir),'Drought',
+                 ifelse(grepl('appalachians', dir),'Appalachians',
+                 ifelse(grepl('coastal', dir),'Coastal',
+                 ifelse(grepl('piedmont',dir),'Headwaters',
+                 'Unknown Scenario'))))))) #### Piedmont misslabled in pipeline, need to correct for plotting.
+
       if(i == 1){
-        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, run = run)
+        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, model = model, run = scenario)
       }
-      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, run = run))
+      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, model = model, run = scenario))
       }
     }
     df <- df %>% group_by(across(!contains(c('rmse','nse','replicate','kge','bias','piw','picp')))) %>%
@@ -333,13 +346,13 @@ reshape_metric <- function(log, metric,keep_vars= c('partition'),difference=FALS
       mutate(performance_change = baseline_mean-mean,
              group= factor(group, levels=cols_out,
                            labels=c('Overall','Coldest 10%','Warmest 10%')),
-             run = factor(run, levels = c("Train Hot/Test Cold","Train Cold/Test Hot", "Drought","Coastal","Piedmont","Headwaters")))
+             run = factor(run))
     )
   }else{
     return(out %>%
              mutate(group= factor(group, levels=cols_out,
                          labels=c('Overall','Coldest 10%','Warmest 10%')),
-                    run = factor(run, levels = c("Baseline","Train Hot/Test Cold","Train Cold/Test Hot", "Drought","Coastal","Piedmont","Headwaters")))
+                    run = factor(run))
     )
   }
 }

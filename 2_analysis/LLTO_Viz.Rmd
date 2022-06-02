@@ -12,7 +12,6 @@ library(reticulate)
 library(sf)
 library(plotly)
 library(feather)
-source('../drb_gwnet/2_Analysis/utils.R')
 library(ggridges)
 
 knitr::opts_chunk$set(echo = TRUE)
@@ -21,16 +20,20 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Baseline Comparisons
 
 ```{r}
+# if you're using Rstudio:
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+setwd('../../river-dl')
+source('../drb_gwnet/2_Analysis/utils.R')
 
 spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
 edges <- spatial$edges %>% st_as_sf()
 
 metrics <- c('overall_metrics','month_metrics','reach_metrics')
 
-gwn_stats <- metrics %>% map(~combine_replicates('results/baseline/GWN',.))
+gwn_stats <- metrics %>% map(~combine_replicates('results/baseline/GWN',.,subfolders=T))
 names(gwn_stats) <- c('temps','months','segs')
 
-rgcn_stats <- metrics %>% map(~combine_replicates('results/baseline/RGCN',.))
+rgcn_stats <- metrics %>% map(~combine_replicates('results/baseline/RGCN',.,subfolders = T))
 names(rgcn_stats) <- c('temps','months','segs')
 
 gwn_reps <- read_replicates('results/baseline/GWN', 'overall_metrics') ## Best, 9
@@ -45,7 +48,7 @@ t.test(gwn_reps$rmse_top10[gwn_reps$partition=='tst'],rgcn_reps$rmse_top10[rgcn_
 
 check <- t.test(rgcn_reps$rmse[rgcn_reps$partition=='tst']) %>% broom::tidy() %>%
   mutate(model = 'rgcn') %>%
-  bind_rows(t.test(rgcn_hot_reps$rmse[rgcn_reps$partition=='tst']) %>% broom::tidy() %>%
+  bind_rows(t.test(rgcn_reps$rmse[rgcn_reps$partition=='tst']) %>% broom::tidy() %>%
   mutate(model = 'gwn'))
 
 ggplot(check, aes(x = model, y = estimate))+
@@ -147,9 +150,9 @@ rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   kableExtra::kable_material(full_width = F)
 
 
-p1 <- rgcn_stats$temps %>%
-  reshape_metric(.,'rmse') %>% mutate(model = 'RGCN') %>%
-  bind_rows(gwn_stats$temps %>% reshape_metric(.,'rmse') %>% mutate(model='GWN')) %>%
+p1 <- rgcn_stats$temps %>% 
+  reshape_metric(.,'rmse',c('partition','run','model')) %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_stats$temps %>% reshape_metric(.,'rmse',c('partition','run','model')) %>% mutate(model='GWN')) %>%
   filter(partition =='tst') %>%
   ggplot(.,aes(x = group, y = mean, color = model)) +
   geom_point() +
@@ -158,8 +161,8 @@ p1 <- rgcn_stats$temps %>%
   ggtitle('RMSE')
 
 p2 <- rgcn_stats$temps %>%
-  reshape_metric(.,'nse') %>% mutate(model = 'RGCN') %>%
-  bind_rows(gwn_stats$temps %>% reshape_metric(.,'nse') %>% mutate(model='GWN')) %>%
+  reshape_metric(.,'nse',c('partition','run','model')) %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_stats$temps %>% reshape_metric(.,'nse',c('partition','run','model')) %>% mutate(model='GWN')) %>%
   filter(partition =='tst') %>%
   ggplot(.,aes(x = group, y = mean, color = model)) +
   geom_point() +
@@ -168,6 +171,17 @@ p2 <- rgcn_stats$temps %>%
   ggtitle('nse')
 
 gridExtra::grid.arrange(p1,p2, ncol = 1, top = 'Mean and SD across replicates')
+
+
+### Plot mean and sd
+full_temps %>% filter(partition == 'tst') %>%
+  reshape_metric(.,'rmse',c('partition','run','model')) %>%
+  ggplot(.,aes(x = group, y = mean, color = model)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd)) +
+  theme_bw() +
+  ggtitle('rmse') +
+  facet_wrap(~run, scales = 'free')
 ```
 
 ### LTO Comps
