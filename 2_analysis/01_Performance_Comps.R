@@ -27,15 +27,27 @@ llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv')
 full_temps <- combine_replicates('results', 'overall_metrics', subfolders = T)
 
 ### Plot mean and sd
-full_temps %>% filter(partition == 'tst') %>%
-  reshape_metric(.,'rmse',c('partition','run','model')) %>%
-  filter(run == 'Baseline', group == 'Overall')
+check <- full_temps %>% filter(partition == 'tst') %>% 
+  reshape_metric(.,'rmse',c('partition','run','model')) %>% 
+  filter(group =='Overall') %>% select(run, model, mean) %>% 
+  pivot_wider(names_from=run, values_from = mean)
 
-full_temps %>% filter(partition == 'tst') %>%
+full_temps %>% filter(partition == 'tst',
+                      model != 'RGCN') %>%
   reshape_metric(.,'rmse',c('partition','run','model')) %>%
   ggplot(.,aes(x = group, y = mean, color = model)) +
   geom_point() +
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd)) +
+  theme_bw() +
+  ggtitle('rmse') +
+  facet_wrap(~run, scales = 'free')
+
+full_temps %>% filter(partition == 'tst') %>%
+  reshape_metric(.,'rmse',c('partition','run','model')) %>%
+  filter(group != 'Coldest 10%') %>%
+  ggplot(.,aes(x = group, y = mean, fill = model)) +
+  geom_col(position='dodge') +
+  #geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd)) +
   theme_bw() +
   ggtitle('rmse') +
   facet_wrap(~run, scales = 'free')
@@ -98,7 +110,7 @@ sigs_segments_overall <- reshape_metric(full_segs[full_segs$partition=='tst',], 
          is.finite(RGCN)) %>%
   group_by(run, group) %>%
   nest() %>%
-  mutate(wilcox = map(data, ~wilcox.test(.$GWN,.$GWN_rs_adj,paired=T) %>% broom::tidy())) %>%
+  mutate(wilcox = map(data, ~wilcox.test(.$GWN,.$RGCN,paired=T) %>% broom::tidy())) %>%
   select(-data) %>%
   unnest(cols = c(wilcox)) %>%
   mutate(p.value = round(p.value,3)) %>%
@@ -107,7 +119,7 @@ sigs_segments_overall <- reshape_metric(full_segs[full_segs$partition=='tst',], 
                                 p.value<0.1~'*'))
   
 reshape_metric(full_segs[full_segs$partition=='tst',], 'rmse',c('partition','run','model','seg_id_nat')) %>%
-  filter(model %in% c('GWN','GWN_rs_adj')) %>%
+  #filter(model %in% c('GWN','GWN_rs_adj')) %>%
   ggplot(., aes(y=run, x=mean)) +
   stat_density_ridges(aes(fill=model),quantile_lines = TRUE, quantiles = c(.5), alpha = 0.5, scale = 1.3) +
   scale_fill_viridis_d(end=.7) +

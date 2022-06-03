@@ -203,7 +203,8 @@ combine_replicates = function(folder, pattern,subfolders = F){
       #run = str_split(files[i], pattern = '/')[[1]] %>% tail(3) %>% .[1]
       model = ifelse(grepl('rgcn',dir), 'RGCN',
               ifelse(grepl('rs_adj',dir), 'GWN_rs_adj',
-              ifelse(grepl('no_pt',dir), 'GWN_no_pt','GWN')))
+              ifelse(grepl('no_pt',dir), 'GWN_no_pt',
+              ifelse(grepl('lr_0005',dir),'GWN_LR5','GWN'))))
       scenario = ifelse(grepl('baseline',dir),'Baseline',
                  ifelse(grepl('min', dir),'Train Hot/Test Cold',
                  ifelse(grepl('max', dir),'Train Cold/Test Hot',
