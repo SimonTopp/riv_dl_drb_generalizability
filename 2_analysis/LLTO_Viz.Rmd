@@ -59,6 +59,7 @@ t.test(gwn_reps$rmse[gwn_reps$partition=='tst'],rgcn_reps$rmse[rgcn_reps$partiti
 ## Figure for overall difference between the two models
 
 p1 <- gwn_stats$segs %>% mutate(run = 'GraphWaveNet') %>% bind_rows(rgcn_stats$segs %>% mutate(run = 'RGCN')) %>%
+  filter(train_type == "Full Train") %>%
   seg_plotter_sf(., 'rmse_mean') +
   facet_wrap(~run) + labs(color = 'RMSE\n(°C)', title = ' ') +
   theme(legend.title = element_text(size=8))
@@ -84,8 +85,8 @@ p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'met
 
 
 
-p3 <- check <- rgcn_stats$months %>% filter(partition == 'tst') %>% mutate(model= 'RGCN') %>%
-  bind_rows(gwn_stats$months %>% filter(partition == 'tst') %>% mutate(model = 'GraphWaveNet')) %>%
+p3 <- rgcn_stats$months %>% filter(partition == 'tst',train_type=='Full Train') %>% mutate(model= 'RGCN') %>%
+  bind_rows(gwn_stats$months %>% filter(partition == 'tst',train_type=='Full Train') %>% mutate(model = 'GraphWaveNet')) %>%
   pivot_longer(c(rmse_mean, mean_bias_mean)) %>%
   mutate(name = factor(name, levels = c('rmse_mean', 'mean_bias_mean'), labels = c('RMSE','Bias')),
          month = month(date, label = T)) %>%

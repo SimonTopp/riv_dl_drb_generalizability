@@ -111,14 +111,18 @@ seg_rmse_diff <- function(log1,log2,name1, name2, part = 'tst'){
   return(diff)
 }
 
-seg_error_diff <- function(log1,log2,name1, name2, part = 'tst', shape){
+seg_error_diff <- function(log1,log2,name1, name2, part = 'tst', run_type = 'Full Train', shape){
 
-  full_log <- log1 %>% filter(partition == part) %>% 
-    select(-contains('sd')) %>% pivot_longer(cols=contains('mean'), names_to='metric') %>% 
+  full_log <- log1 %>% filter(partition == part, train_type==run_type) %>% 
+    select(-contains('sd'),-train_type) %>% 
+    pivot_longer(cols=contains('mean'), names_to='metric') %>% 
     full_join(edges %>% st_set_geometry(NULL) %>% select(seg_id_nat)) %>% mutate(comp = name1) %>%
-    bind_rows(log2 %>% filter(partition == part) %>% 
-                select(-contains('sd')) %>% pivot_longer(cols=contains('mean'), names_to='metric') %>% 
-                full_join(edges %>% st_set_geometry(NULL) %>% select(seg_id_nat)) %>% mutate(comp = name2)) 
+    bind_rows(log2 %>% filter(partition == part, train_type==run_type) %>% 
+                select(-contains('sd'),-train_type) %>% 
+                pivot_longer(cols=contains('mean'), names_to='metric') %>% 
+                full_join(edges %>% st_set_geometry(NULL) %>% select(seg_id_nat)) %>% mutate(comp = name2)) %>%
+    select(comp,run,seg_id_nat, value,metric,partition)
+  
   
   diff <- full_log %>% 
     #select(comp,seg_id_nat, rmse_mean) %>% 
@@ -202,9 +206,11 @@ combine_replicates = function(folder, pattern,subfolders = F){
       dir = tolower(files[i])
       #run = str_split(files[i], pattern = '/')[[1]] %>% tail(3) %>% .[1]
       model = ifelse(grepl('rgcn',dir), 'RGCN',
-              ifelse(grepl('rs_adj',dir), 'GWN_rs_adj',
-              ifelse(grepl('no_pt',dir), 'GWN_no_pt',
-              ifelse(grepl('lr_0005',dir),'GWN_LR5','GWN'))))
+              ifelse(grepl('gwn',dir), 'GWN'))
+      train_type = ifelse(grepl('reset_spatial',dir), 'Reset Adj.',
+                   ifelse(grepl('no_pt',dir), 'No PT',
+                   ifelse(grepl('full_train',dir),'Full Train',
+                   ifelse(grepl('pre',dir),'pre_train_only','Unknown Group'))))
       scenario = ifelse(grepl('baseline',dir),'Baseline',
                  ifelse(grepl('min', dir),'Train Hot/Test Cold',
                  ifelse(grepl('max', dir),'Train Cold/Test Hot',
@@ -215,9 +221,9 @@ combine_replicates = function(folder, pattern,subfolders = F){
                  'Unknown Scenario'))))))) #### Piedmont misslabled in pipeline, need to correct for plotting.
 
       if(i == 1){
-        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, model = model, run = scenario)
+        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, model = model, run = scenario,train_type=train_type)
       }
-      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, model = model, run = scenario))
+      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, model = model, run = scenario,train_type=train_type))
       }
     }
     df <- df %>% group_by(across(!contains(c('rmse','nse','replicate','kge','bias','piw','picp')))) %>%
