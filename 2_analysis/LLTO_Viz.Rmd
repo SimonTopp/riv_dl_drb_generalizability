@@ -36,8 +36,10 @@ names(gwn_stats) <- c('temps','months','segs')
 rgcn_stats <- metrics %>% map(~combine_replicates('results/baseline/RGCN',.,subfolders = T))
 names(rgcn_stats) <- c('temps','months','segs')
 
-gwn_reps <- read_replicates('results/baseline/GWN', 'overall_metrics') ## Best, 9
-rgcn_reps <- read_replicates('results/baseline/RGCN', 'overall_metrics') ## Best, 7
+gwn_reps <- read_replicates('results/baseline/GWN/full_train', 'overall_metrics') %>% 
+  filter(partition=='tst')## Best, 6
+rgcn_reps <- read_replicates('results/baseline/RGCN/full_train', 'overall_metrics') %>%
+  filter(partition=='tst')## Best, 2
 
 shapiro.test(rgcn_reps$rmse[rgcn_reps$partition=='tst'])
 shapiro.test(gwn_reps$rmse[gwn_reps$partition=='tst'])

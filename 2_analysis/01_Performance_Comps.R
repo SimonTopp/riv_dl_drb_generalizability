@@ -6,6 +6,8 @@ library(plotly)
 library(feather)
 library(ggridges)
 library(ggpubr)
+library(knitr)
+library(kableExtra)
 
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 setwd('../../river-dl')
@@ -28,13 +30,40 @@ full_temps <- combine_replicates('results', 'overall_metrics', subfolders = T) %
   filter(train_type != 'pre_train_only') %>%
   mutate(run = factor(run, levels=c('Baseline', 'Drought','Train Cold/Test Hot','Train Hot/Test Cold',
                                     'Headwaters','Appalachians','Coastal')))
+best_table <- function(df, mod, grp =  'Overall'){
+  best <- df %>% filter(partition == 'tst') %>%
+    reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
+    filter(group == grp, model==mod) %>%
+    select(run, mean, train_type) %>%
+    group_by(run) %>%
+    mutate(best = ifelse(round(mean,2) == min(round(mean,2)),T,F)) %>%
+    select(-mean) %>%
+    pivot_wider(names_from=train_type, values_from=best) %>%
+    arrange(run)
+  
+  df %>% filter(partition == 'tst') %>%
+    reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
+    filter(group == grp, model==mod) %>%
+    select(run, mean, train_type) %>%
+    pivot_wider(names_from=train_type, values_from=mean) %>%
+    mutate(across(c(2,3,4), ~round(.,2))) %>%
+    arrange(run) %>%
+    kable() %>%
+    kable_paper() %>%
+    column_spec(2, bold = best$`Full Train`)%>%
+    column_spec(3, bold = best$`No PT`) %>%
+    column_spec(4, bold = best$`Reset Adj.`) %>%
+    pack_rows('Domain Shift',2,4)%>%
+    pack_rows('Geographic Shift',5,7)
+}
+
+best_table(full_temps, 'RGCN', 'Warmest 10%')
+best_table(full_temps, 'GWN', 'Warmest 10%')
+
+best_table(full_temps, 'RGCN', 'Overall')
+best_table(full_temps, 'GWN', 'Overall')
 
 ### Plot mean and sd
-check <- full_temps %>% filter(partition == 'tst') %>% 
-  reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>% 
-  filter(group =='Overall') %>% select(run, model, mean, train_type) %>% 
-  pivot_wider(names_from=run, values_from = mean)
-
 full_temps %>% filter(partition == 'tst') %>%
   reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
   filter(group == "Overall", train_type != 'pre_train_only') %>%
@@ -72,31 +101,20 @@ plot_overall <- function(runs, grp = 'Overall', metric='rmse', part='tst', title
 
 plot_overall(c('Baseline','Drought','Train Cold/Test Hot','Train Hot/Test Cold'), title = 'Overall Performance (RMSE)')
 plot_overall(c('Headwaters','Appalachians','Coastal'), title = 'Overall Performance (RMSE)') + facet_wrap(~run, scales = 'free')
+
+## Overalll
+p1 <- plot_overall(c('Baseline','Drought','Train Cold/Test Hot','Train Hot/Test Cold'), title = 'Overall Performance (RMSE)')
+p2 <- plot_overall(c('Headwaters','Appalachians','Coastal'), title = 'Overall Performance (RMSE)') + facet_wrap(~run, scales = 'free')
 g <- ggarrange(p1, p2, nrow=2,common.legend = T,vjust=0,hjust=-1)
 g
-full_temps %>% filter(partition == 'tst') %>%
-  reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
-  filter(group == "Overall",
-         run %in% c('Headwaters','Appalachians','Coastal',)) %>%
-  ggplot(.,aes(x = train_type, y = mean, color = model)) +
-  geom_point(position= position_dodge(width=1)) +
-  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),position= position_dodge(width=1),width = .2) +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle=45,vjust=1,hjust=1))+
-  #ylim(1.5,1.85)+
-  ggtitle('rmse') +
-  facet_wrap(~run,nrow=1, scales = 'free')
 
+## Warmest
+p1 <- plot_overall(c('Baseline','Drought','Train Cold/Test Hot','Train Hot/Test Cold'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)')
+p2 <- plot_overall(c('Headwaters','Appalachians','Coastal'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)') + 
+  facet_wrap(~run, scales = 'free')
+g <- ggarrange(p1, p2, nrow=2,common.legend = T,vjust=0,hjust=-1)
+g
 
-full_temps %>% filter(partition == 'tst') %>%
-  reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
-  filter(group == "Warmest 10%") %>%
-  ggplot(.,aes(x = train_type, y = mean, color = model)) +
-  geom_point(position= position_dodge(width=1)) +
-  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),position= position_dodge(width=1),width = .2) +
-  theme_bw() +
-  ggtitle('rmse') +
-  facet_wrap(~run,nrow=2, scales = 'free')
 
 full_temps %>% filter(partition == 'tst') %>%
   reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
@@ -107,6 +125,7 @@ full_temps %>% filter(partition == 'tst') %>%
   theme_bw() +
   ggtitle('rmse') +
   facet_wrap(~run, scales = 'free')
+
 
 full_temps %>% filter(partition == 'tst') %>%
   reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
@@ -178,7 +197,7 @@ sigs_segments_overall <- reshape_metric(full_segs[full_segs$partition=='tst',], 
   pivot_wider(names_from='model',values_from='mean') %>%
   filter(is.finite(GWN),
          is.finite(RGCN)) %>%
-  group_by(run, group) %>%
+  group_by(run, group, train_type) %>%
   nest() %>%
   mutate(wilcox = map(data, ~wilcox.test(.$GWN,.$RGCN,paired=T) %>% broom::tidy())) %>%
   select(-data) %>%
@@ -189,7 +208,7 @@ sigs_segments_overall <- reshape_metric(full_segs[full_segs$partition=='tst',], 
                                 p.value<0.1~'*'))
   
 reshape_metric(full_segs[full_segs$partition=='tst',], 'rmse',c('partition','run','model','seg_id_nat','train_type')) %>%
-  #filter(model %in% c('GWN','GWN_rs_adj')) %>%
+  #filter(train_type == 'Full Train') %>%
   ggplot(., aes(y=run, x=mean)) +
   stat_density_ridges(aes(fill=model),quantile_lines = TRUE, quantiles = c(.5), alpha = 0.5, scale = 1.3) +
   scale_fill_viridis_d(end=.7) +
@@ -199,7 +218,6 @@ reshape_metric(full_segs[full_segs$partition=='tst',], 'rmse',c('partition','run
   labs(x= 'Distribution of Reach Scale RMSE (°C)',y= 'Model Run',fill = 'Model') +
   theme_bw() +
   theme(legend.position = 'top') 
-
 
 min <- reshape_metric(full_segs[full_segs$partition=='tst',], 'rmse',c('partition','run','model','seg_id_nat','train_type')) %>%
   filter(group=='Overall') %>%
@@ -212,10 +230,10 @@ reshape_metric(full_segs[full_segs$partition=='tst',], 'rmse',c('partition','run
   filter(group=='Overall') %>%
   left_join(min) %>%
   ggplot(., aes(x=run, y=mean)) +
-  geom_violin(aes(fill=model,linetype=min),draw_quantiles = .5, alpha = .3) +
+  geom_violin(aes(fill=train_type,linetype=min),draw_quantiles = .5, alpha = .3) +
   scale_fill_viridis_d(end=.7) +
   coord_cartesian(ylim=c(.5,3)) +
-  facet_wrap(~train_type,nrow=3)  +
+  facet_wrap(~model,nrow=3)  +
   labs(x= 'Distribution of Reach Scale RMSE (°C)',y= 'Model Run',fill = 'Model') +
   theme_bw() +
   theme(legend.position = 'top') 
