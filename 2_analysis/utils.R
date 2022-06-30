@@ -229,7 +229,8 @@ combine_replicates = function(folder, pattern,subfolders = F){
     df <- df %>% group_by(across(!contains(c('rmse','nse','replicate','kge','bias','piw','picp')))) %>%
       summarise(across(everything(),c(mean = ~mean(.x,na.rm=T),sd = ~sd(.x,na.rm=T)),.names = "{.col}_{.fn}")) %>%
       ungroup() %>%
-      select(-c(replicate_mean, replicate_sd, variable))
+      select(-c(replicate_mean, replicate_sd, variable)) %>%
+      filter(train_type != 'pre_train_only')
   }else{
     for(i in c(1:length(files))){
       if(i == 1){

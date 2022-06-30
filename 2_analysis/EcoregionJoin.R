@@ -75,17 +75,33 @@ p2<- temp_sums %>%
   group_by(test_group) %>%
   summarise(percent=sum(percent)) %>%
   ggplot() +
-  geom_sf(aes(fill = factor(test_group,levels=c('Headwaters','Piedmont','Coastal'))),color='transparent') +
+  geom_sf(aes(fill = factor(test_group,levels=c('Headwaters','Piedmont','Coastal'),
+                            labels=c('Headwaters','Appalachians','Coastal'))),color='transparent') +
   scale_fill_viridis_d(option='plasma', end =.8) +
   geom_sf(data = drb_segs, alpha=.3) +
   labs(fill = 'Hold-Out Groups') +
   ggthemes::theme_map() +
   theme(legend.position = c(.8,.5)) #theme_minimal()
 
+
 g <- gridExtra::grid.arrange(p1,p2, nrow=1)
 
-
 ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.png',plot=g, width = 7.5, height=6, units = 'in', dpi=200)
+
+###Distribution of obs
+p3 <- temp_obs %>%
+  group_by(seg_id_nat) %>%
+  summarise(`# of\nObservations` = n()) %>%
+  right_join(edges) %>%
+  ggplot(.) +
+  geom_sf(aes(color=`# of\nObservations`, geometry=geometry)) +
+  scale_color_viridis_c(option='magma', end=.9,trans='log10') +
+  ggthemes::theme_map() +
+  theme(legend.position = c(0.8,.5))
+p3
+g <- gridExtra::grid.arrange(p1,p2,p3,nrow=1)
+
+ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions_v2.png',plot=g, width = 9, height=5, units = 'in', dpi=200)
 
  drb_segs %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n())) %>%
   ggplot(aes(color = count)) +
