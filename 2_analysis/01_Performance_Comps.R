@@ -30,6 +30,7 @@ full_temps <- combine_replicates('results', 'overall_metrics', subfolders = T) %
   filter(train_type != 'pre_train_only') %>%
   mutate(run = factor(run, levels=c('Baseline', 'Drought','Train Cold/Test Hot','Train Hot/Test Cold',
                                     'Headwaters','Appalachians','Coastal')))
+
 best_table <- function(df, mod, grp =  'Overall'){
   best <- df %>% filter(partition == 'tst') %>%
     reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
@@ -94,6 +95,90 @@ best_table(full_temps, 'GWN', 'Warmest 10%')
 
 best_table(full_temps, 'RGCN', 'Overall')
 best_table(full_temps, 'GWN', 'Overall')
+
+
+########
+### Make one just for Full Train and No PT
+#######
+full_temps %>% filter(partition == 'tst') %>%
+  reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
+  filter(group == "Overall") %>%
+  select(run, mean, model, train_type) %>%
+  filter(train_type == 'Full Train') %>%
+  pivot_wider(names_from=c(model,train_type), 
+              values_from=mean,
+              names_sep = '-') %>%
+  rename(Scenario = run, GWN = `GWN-Full Train`, RGCN = `RGCN-Full Train`) %>%
+  mutate(across(c(2,3), ~round(.,2))) %>%
+  arrange(Scenario) %>%
+  kable() %>%
+  kable_paper() %>%
+  column_spec(2, bold = c(F,T,T,T,T,T,T))%>%
+  column_spec(3, bold = c(T,F,F,T,F,F,F)) %>%
+  pack_rows('Domain Shift',2,4)%>%
+  pack_rows('Geographic Shift',5,7)
+
+
+full_temps %>% filter(partition == 'tst') %>%
+  reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
+  filter(group == "Overall") %>%
+  select(run, mean, model, train_type) %>%
+  filter(train_type %in% c('Full Train', 'No PT'),
+         model =='RGCN') %>%
+  pivot_wider(names_from=c(model,train_type), 
+              values_from=mean,
+              names_sep = '-') %>%
+  rename(Scenario = run, RGCN = `RGCN-Full Train`) %>%
+  mutate(across(c(2,3), ~round(.,2))) %>%
+  arrange(Scenario) %>%
+  kable() %>%
+  kable_paper() %>%
+  column_spec(2, bold = c(T,T,T,T,F,F,F))%>%
+  column_spec(3, bold = c(F,F,F,F,T,T,T)) %>%
+  pack_rows('Domain Shift',2,4)%>%
+  pack_rows('Geographic Shift',5,7)
+
+full_temps %>% filter(partition == 'tst') %>%
+  reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
+  filter(group == "Overall") %>%
+  select(run, mean, model, train_type) %>%
+  filter(train_type %in% c('Full Train', 'No PT'),
+         model =='GWN') %>%
+  pivot_wider(names_from=c(model,train_type), 
+              values_from=mean,
+              names_sep = '-') %>%
+  rename(Scenario = run, GWN = `GWN-Full Train`) %>%
+  mutate(across(c(2,3), ~round(.,2))) %>%
+  arrange(Scenario) %>%
+  kable() %>%
+  kable_paper() %>%
+  column_spec(2, bold = c(T,T,T,T,T,T,T))%>%
+  column_spec(3, bold = c(T,F,T,F,F,F,F)) %>%
+  pack_rows('Domain Shift',2,4)%>%
+  pack_rows('Geographic Shift',5,7)
+
+
+### Try to plot the above up better
+check <- full_temps %>% filter(partition == 'tst') %>%
+  reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
+  filter(group == "Overall",
+         train_type %in% c("Full Train",'No PT')) %>%
+  select(run, mean, model, train_type) %>%
+  pivot_wider(names_from=train_type, 
+              values_from=mean) %>%
+  mutate(change = `No PT`-`Full Train`)
+
+ggplot(check, aes(x=run, y=change, fill = model)) +
+  geom_col(position='dodge')+
+  geom_hline(aes(yintercept=0),color = 'black') +
+  scale_fill_viridis_d(end=.6)+
+  labs(fill='Model', x = 'Scenario', y = expression(''%<-% 'Decreases Performance : Increases Performance' %->%''),
+       title = 'Influence of Pretraining') +
+  theme_bw() +
+  theme(legend.position = 'bottom') +
+  coord_flip()
+
+ggsave('../drb_gwnet/2_analysis/figures/pt_influence.png', width = 5, height = 4, units = 'in')
 
 ### Plot mean and sd
 full_temps %>% filter(partition == 'tst') %>%
@@ -182,7 +267,8 @@ full_segs <- combine_replicates('results','reach_metrics',subfolders=T) %>%
 
 p1 <- reshape_metric(full_temps[full_temps$partition=='tst',], 'rmse',c('partition','run','model','train_type'), difference=T) %>%
   filter(run %in% c("Headwaters","Appalachians",'Coastal'),
-         group %in% c("Overall","Warmest 10%")) %>%
+         group %in% c("Overall","Warmest 10%"),
+         train_type == 'Full Train') %>%
   ggplot(., aes(x=run, y=performance_change,fill = model)) +
     geom_col(position='dodge')+
     geom_hline(aes(yintercept=0),color = 'black') +
@@ -200,7 +286,8 @@ p1
 
 p2 <- reshape_metric(full_temps[full_temps$partition=='tst',], 'rmse',c('partition','run','model','train_type'), difference=T) %>%
   filter(run %in% c("Train Cold/Test Hot","Train Hot/Test Cold",'Drought'),
-         group %in% c("Overall","Warmest 10%")) %>%
+         group %in% c("Overall","Warmest 10%"),
+         train_type == 'Full Train') %>%
   ggplot(., aes(x=run, y=performance_change,fill = model)) +
   geom_col(position='dodge')+
   geom_hline(aes(yintercept=0),color = 'black') +
@@ -214,7 +301,7 @@ p2 <- reshape_metric(full_temps[full_temps$partition=='tst',], 'rmse',c('partiti
   coord_flip() +
   facet_grid(train_type~group)
 
-g <- ggarrange(p1, p2, ncol=2,widths=c(.47,.53),common.legend = T,vjust=0,hjust=-1)
+g <- ggarrange(p1, p2, ncol=1,widths=c(.47,.53),common.legend = T,vjust=0,hjust=-1)
 annotate_figure(g,bottom = text_grob("Change in RMSE (ºC) from Baseline (Negative == Worse Performance)"),
                 left = text_grob("Hold-Out Scenario", rot = 90),
                 )

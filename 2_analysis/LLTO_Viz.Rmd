@@ -114,7 +114,8 @@ ggsave('../drb_gwnet/2_analysis/figures/baseline_comps.png', plot = g, width = 5
 
 rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
   bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
-  filter(partition == 'tst') %>%
+  filter(partition == 'tst',
+         train_type == 'Full Train') %>%
   select(rmse_mean, rmse_top10_mean,rmse_bot10_mean, model) %>%
   pivot_longer(-model) %>%
   mutate(name = case_when(name == 'rmse_top10_mean'~ 'Warmest 10%',

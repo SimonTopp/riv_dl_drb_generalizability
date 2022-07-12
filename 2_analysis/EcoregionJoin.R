@@ -18,6 +18,12 @@ drb_segs <- drb_segs$edges
 drb_bounds <- st_read('data_DRB/DRB_spatial/drbbnd/drb_bnd_polygon.shp') %>%
   st_transform(crs = st_crs(drb_segs))
 
+#### Bland inset map
+ggplot(drb_bounds) +
+  geom_sf(fill='black', alpha = .9) +
+  geom_sf(data = drb_segs,color='light blue') +
+  ggthemes::theme_map()
+
 seg_ecoregions <- drb_segs %>% st_join(ecoregs, largest = T)
 
 check <- drb_segs %>% filter(!seg_id_nat %in% seg_ecoregions$seg_id_nat)

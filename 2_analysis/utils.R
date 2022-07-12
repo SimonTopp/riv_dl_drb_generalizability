@@ -391,3 +391,13 @@ read_replicates = function(folder, pattern,subfolders = F){
   }
   return(df)
 }
+
+
+aggregate_xai <- function(folder, pattern){
+  
+  files <- list.files(folder, pattern=pattern, recursive=T, full.names=T)
+  print(sprintf("Summarising %s files", length(files)))
+  
+  df <- purrr::map_dfr(files, read_csv)
+  return(df)
+}
