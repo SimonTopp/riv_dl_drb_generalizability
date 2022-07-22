@@ -37,7 +37,7 @@ best_table <- function(df, mod, grp =  'Overall'){
     filter(group == grp, model==mod) %>%
     select(run, mean, train_type) %>%
     group_by(run) %>%
-    mutate(best = ifelse(round(mean,2) == min(round(mean,2)),T,F)) %>%
+    mutate(best = ifelse(round(mean,3) == min(round(mean,3)),T,F)) %>%
     select(-mean) %>%
     pivot_wider(names_from=train_type, values_from=best) %>%
     arrange(run)
@@ -47,7 +47,7 @@ best_table <- function(df, mod, grp =  'Overall'){
     filter(group == grp, model==mod) %>%
     select(run, mean, train_type) %>%
     pivot_wider(names_from=train_type, values_from=mean) %>%
-    mutate(across(c(2,3,4), ~round(.,2))) %>%
+    mutate(across(c(2,3,4), ~round(.,3))) %>%
     arrange(run) %>%
     kable() %>%
     kable_paper() %>%
@@ -77,7 +77,7 @@ full_temps %>% filter(partition == 'tst') %>%
   pivot_wider(names_from=c(model,train_type), 
               values_from=mean,
               names_sep = '-') %>%
-  mutate(across(c(2,3,4,5,6,7), ~round(.,2))) %>%
+  mutate(across(c(2,3,4,5,6,7), ~round(.,3))) %>%
   arrange(run) %>%
   kable() %>%
   kable_paper() %>%
@@ -280,7 +280,7 @@ p1 <- reshape_metric(full_temps[full_temps$partition=='tst',], 'rmse',c('partiti
       axis.title = element_blank()
     )+
     coord_flip() +
-    facet_grid(train_type~group)
+    facet_wrap(~group, ncol = 1)
 
 p1
 
@@ -299,9 +299,9 @@ p2 <- reshape_metric(full_temps[full_temps$partition=='tst',], 'rmse',c('partiti
     axis.title = element_blank()
   )+
   coord_flip() +
-  facet_grid(train_type~group)
+  facet_wrap(~group,ncol = 1)
 
-g <- ggarrange(p1, p2, ncol=1,widths=c(.47,.53),common.legend = T,vjust=0,hjust=-1)
+g <- ggarrange(p1, p2, ncol=2,widths=c(.47,.53),common.legend = T,vjust=0,hjust=-1)
 annotate_figure(g,bottom = text_grob("Change in RMSE (ºC) from Baseline (Negative == Worse Performance)"),
                 left = text_grob("Hold-Out Scenario", rot = 90),
                 )
