@@ -401,3 +401,18 @@ aggregate_xai <- function(folder, pattern){
   df <- purrr::map_dfr(files, read_csv)
   return(df)
 }
+
+###
+###### Compare significance across replicate runs
+###
+### function for comparing across replicates
+replicate_comps <- function(run1,run2, scenario){
+  run_1 <- read_replicates(run1, 'overall_metrics')
+  run_2 <- read_replicates(run2, 'overall_metrics')
+  sig_test<-t.test(run_1$rmse[run_1$partition=='tst'],run_2$rmse[run_2$partition=='tst']) %>%
+    broom::tidy() %>% mutate(group='overall') %>%
+    bind_rows(t.test(run_1$rmse_top10[run_1$partition=='tst'],run_2$rmse_top10[run_2$partition=='tst']) %>%
+                broom::tidy() %>% mutate(group='warmest10')) %>%
+    mutate(scenario = scenario)
+  return(sig_test)
+}
