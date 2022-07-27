@@ -75,6 +75,25 @@ rgcn_scenario_sigs <- replicate_comps('results/baseline/RGCN/full_train','result
   bind_rows(replicate_comps('results/baseline/RGCN/full_train','results/Drought/RGCN/full_train', 'Drought'))
 
 
+#### What about pt vs no pt
+gwn_pt_sigs <- replicate_comps('results/baseline/GWN/full_train','results/baseline/GWN/no_pt', 'Baseline') %>%
+  bind_rows(replicate_comps('results/LLO/coastal/GWN/full_train','results/LLO/coastal/GWN/no_pt', 'Coastal')) %>%
+  bind_rows(replicate_comps('results/LLO/appalachians/GWN/full_train','results/LLO/appalachians/GWN/no_pt', 'Appalachians')) %>%
+  bind_rows(replicate_comps('results/LLO/piedmont/GWN/full_train','results/LLO/piedmont/GWN/no_pt', 'Headwaters')) %>%
+  bind_rows(replicate_comps('results/LTO/max/GWN/full_train','results/LTO/max/GWN/no_pt', 'Train Cold/Test Hot')) %>%
+  bind_rows(replicate_comps('results/LTO/min/GWN/full_train','results/LTO/min/GWN/no_pt', 'Train Hot/Test Cold')) %>%
+  bind_rows(replicate_comps('results/Drought/GWN/full_train','results/Drought/GWN/no_pt', 'Drought')) %>%
+  mutate(best = ifelse(estimate1<estimate2, "pt","no_pt"))
+
+rgcn_pt_sigs <- replicate_comps('results/baseline/RGCN/full_train','results/baseline/RGCN/no_pt', 'Baseline') %>%
+  bind_rows(replicate_comps('results/LLO/coastal/RGCN/full_train','results/LLO/coastal/RGCN/no_pt', 'Coastal')) %>%
+  bind_rows(replicate_comps('results/LLO/appalachians/RGCN/full_train','results/LLO/appalachians/RGCN/no_pt', 'Appalachians')) %>%
+  bind_rows(replicate_comps('results/LLO/piedmont/RGCN/full_train','results/LLO/piedmont/RGCN/no_pt', 'Headwaters')) %>%
+  bind_rows(replicate_comps('results/LTO/max/RGCN/full_train','results/LTO/max/RGCN/no_pt', 'Train Cold/Test Hot')) %>%
+  bind_rows(replicate_comps('results/LTO/min/RGCN/full_train','results/LTO/min/RGCN/no_pt', 'Train Hot/Test Cold')) %>%
+  bind_rows(replicate_comps('results/Drought/RGCN/full_train','results/Drought/RGCN/no_pt', 'Drought')) %>%
+  mutate(best = ifelse(estimate1<estimate2, "pt","no_pt"))
+
 best_table <- function(df, mod, grp =  'Overall'){
   best <- df %>% filter(partition == 'tst') %>%
     reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
@@ -503,7 +522,7 @@ reshape_metric(full_segs, 'rmse',c('partition','run','model','seg_id_nat'), diff
 temp_obs <- read_csv('data_DRB/temperature_observations_drb.csv')
 ###Take a look at how performance varies with reach type
 res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds') %>%
-  mutate(res_group = if_else(type_res %in% c('contains_reservoir',"within_reservoir", "downstream of reservoir (1)","downstream of reservoir (2)","reservoir_outlet_reach"), 'Impacted','Not Impacted'))
+  mutate(res_group = if_else(type_res %in% c('contains_reservoir','reservoir_inlet_reach', "within_reservoir", "downstream of reservoir (1)","downstream of reservoir (2)","reservoir_outlet_reach"), 'Impacted','Not Impacted'))
 
 reach_obs_counts <- llo_groups %>% 
   left_join(res_info) %>% 
