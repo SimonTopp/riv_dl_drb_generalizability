@@ -504,7 +504,7 @@ sigs_segments_differences <- reshape_metric(full_segs, 'rmse',c('partition','run
                                 p.value<0.1~'*'))
 
 
-reshape_metric(full_segs, 'rmse',c('partition','run','model','seg_id_nat'), difference=T) %>%
+reshape_metric(full_segs, 'rmse',c('partition','run','model','seg_id_nat','train_type'), difference=T) %>%
   filter(partition=='tst') %>%
   ggplot(., aes(y=run, x=performance_change)) +
   stat_density_ridges(aes(fill=model),quantile_lines = TRUE, quantiles = c(.5), alpha = 0.5, scale = 1.3) +
@@ -517,9 +517,20 @@ reshape_metric(full_segs, 'rmse',c('partition','run','model','seg_id_nat'), diff
   theme_bw() +
   theme(legend.position = 'top') 
 
+reshape_metric(full_segs, 'rmse',c('partition','run','model','train_type','seg_id_nat'), difference=T) %>%
+  filter(partition=='tst', train_type == 'Full Train') %>%
+  left_join(edges) %>%
+  st_as_sf()%>%
+  ggplot(., aes(color=performance_change)) +
+  scale_color_gradient2() +
+  geom_sf() +
+  facet_grid(model~run)
+
 
 #######Spatial Description of observations
-temp_obs <- read_csv('data_DRB/temperature_observations_drb.csv')
+temp_obs <- read_csv('data_DRB/temperature_observations_drb.csv') %>%
+  filter(date > '1980-01-01')
+
 ###Take a look at how performance varies with reach type
 res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds') %>%
   mutate(res_group = if_else(type_res %in% c('contains_reservoir','reservoir_inlet_reach', "within_reservoir", "downstream of reservoir (1)","downstream of reservoir (2)","reservoir_outlet_reach"), 'Impacted','Not Impacted'))
@@ -539,3 +550,7 @@ temp_obs %>%
   ggplot(.) +
   geom_sf(aes(color=count, geometry=geometry)) +
   scale_color_viridis_c(trans='log10')
+
+
+    
+  
