@@ -238,7 +238,7 @@ egs %>% filter(target_reach == target) %>%
         legend.justification = 'center',
         panel.background = element_rect(color='transparent',fill='black'))
 
-plot_reach <- function(reach, scenario='ptft'){
+plot_reach <- function(reach, scenario='ptft',legend_label=' '){
   aoi <- edges %>% filter(seg_id_nat==reach) %>%
     st_centroid() %>%
     st_buffer(100000)
@@ -246,70 +246,72 @@ plot_reach <- function(reach, scenario='ptft'){
   egs %>% filter(run==scenario, target_reach==reach) %>%
     mutate(total_attribution = seg_slope+seg_elev+seg_width_mean+seg_tave_air+
              seginc_swrad+seg_rain+seginc_potet,
-           total_attribution = ifelse(target_reach==seg_id_nat,NA, total_attribution)) %>%
+           total_attribution = ifelse(target_reach==seg_id_nat,NA, total_attribution),
+           total_attribution = ifelse(total_attribution>.01,.01,total_attribution)) %>%
     left_join(edges)%>%
     st_as_sf()%>%
     st_intersection(aoi) %>%
     ggplot(.) +
     geom_sf(aes(color = total_attribution, geometry=geometry)) +
-    scale_color_viridis_c(na.value = 'red', labels=scales::percent) +
+    geom_sf(data=aoi,color='transparent',fill='transparent')+
+    scale_color_viridis_c(na.value = 'red',begin=.1, limits=c(0,.01), 
+                          labels = c('0.00%','0.25%','0.5%','0.75%','>1.00%'))+#,labels=scales::percent) +
+    labs(color=legend_label) +
     facet_wrap(~model,nrow=1) +
     ggthemes::theme_map() +
-    theme(legend.position = 'right',
+    theme(legend.position = 'bottom',
           legend.justification = 'center',
           panel.background = element_rect(color='transparent',fill='black'))
 }
 
-p1 <- plot_reach(1577)
-p2 <- plot_reach(1487)
-p3 <- plot_reach(2318)
-p4<- plot_reach(4189)
+drb_bounds <- st_read('data_DRB/DRB_spatial/drbbnd/drb_bnd_polygon.shp') %>%
+  st_transform(crs = st_crs(edges))
 
-ggarrange(p1,p2,p3,p4,ncol=1)
-plot_reach(4206)
+p1 <- plot_reach(1577,scenario='ptft',legend_label='Average\nAttribution')
+p2 <- plot_reach(1487,scenario='ptft',legend_label='Average\nAttribution')
+p3 <- plot_reach(2318,scenario='ptft',legend_label='Average\nAttribution')
+p4<- plot_reach(4189,scenario='ptft',legend_label='Average\nAttribution')
 
+target_reaches <- edges %>%
+  filter(seg_id_nat %in% c(1577,1487,4189)) %>%
+  st_centroid()
+
+p_summary <- ggplot(drb_bounds) +
+  geom_sf(fill='black', alpha = .9) +
+  geom_sf(data = edges,color='light blue') +
+  geom_sf_text(data=target_reaches,label="★", size=3, family = "HiraKakuPro-W3", color='red')+
+  ggthemes::theme_map()
+
+g <- p_summary|(p1/p2/p4 & theme(legend.position = "right")) + plot_layout(guides = "collect")
+g
+
+ggsave('../drb_gwnet/2_analysis/figures/reach_egs_4panel.png',plot=g,width=5,height=4.5,units='in')
 
 ####### Look at distribution of attribution across reaches
-target = 2318
-egs %>% filter(run == 'ptft') %>%
+egs %>%
   mutate(total_attribution = seg_slope+seg_elev+seg_width_mean+seg_tave_air+
            seginc_swrad+seg_rain+seginc_potet,
          total_attribution = ifelse(target_reach==seg_id_nat,NA, total_attribution)) %>%
-  group_by(model,target_reach) %>%
+  group_by(model,target_reach,run) %>%
   summarise(mean = mean(total_attribution,na.rm=T),
-            sd=sd(total_attribution, na.rm=T))
-  
-ggplot(.,aes(x = total_attribution, fill=model))+
-  geom_histogram(position='identity',alpha = .3)
-  
-
-egs %>% filter(run == 'ptft', target_reach == target) %>%
-  left_join(edges) %>%
-  mutate(seg_tave_air = ifelse(target_reach==seg_id_nat, NA,seg_tave_air))%>%
-  ggplot(.) +
-  geom_sf(aes(color = seg_tave_air, geometry=geometry)) +
-  scale_color_viridis_c(na.value = 'red') +
-  facet_wrap(~model) +
+            sd=sd(total_attribution, na.rm=T)) %>% 
+  ggplot(.,aes(x = run, y=mean, color=model))+
+  geom_point()+
+  #geom_errorbar(aes(ymax = mean+sd,ymin=mean-sd))+
+  facet_wrap(~target_reach)
   
 
-egs_rgcn %>% 
-  filter(seg_id_nat != target_reach) %>%
-  right_join(edges) %>% 
-  ggplot(.) +
-  geom_sf(aes(color = seg_tave_air, geometry=geometry)) +
-  scale_color_viridis_c(na.value = 'red')
+eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal/GWN_ptft_seasonal_egs.csv') %>%
+  mutate(model = "GWN") %>%
+  bind_rows(read_csv('results/xai_outputs/egs_seasonal/RGCN_ptft_seasonal_egs.csv') %>%
+              mutate(model='RGCN'))
 
-egs %>% summarise(across(c(seg_slope:seginc_potet), sum))
-egs_rgcn %>% summarise(across(c(seg_slope:seginc_potet), sum))
-
-egs %>% filter(seg_id_nat != target_reach) %>%
-  summarise(across(c(seg_slope:seginc_potet), sum)) %>%
-  as.matrix() %>% sum()
-
-egs_rgcn %>% filter(seg_id_nat != target_reach) %>%
-  summarise(across(c(seg_slope:seginc_potet), sum)) %>%
-  as.matrix() %>% sum()
-
-
-
+eg_seasonal %>%
+  select(-c(seg_slope:seg_width_mean)) %>%
+  pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
+  pivot_wider(names_from = metric, values_from = EG) %>%
+  ggplot(aes(x=seq_num,y=mean,color=Feature)) +
+  geom_line() +
+  facet_grid(season~model, scales='free')
+  
 

@@ -553,4 +553,11 @@ temp_obs %>%
 
 
     
-  
+seasonal %>% filter(metric=='mean') %>% 
+  select(-c(seg_slope,seg_elev,seg_width_mean)) %>%
+  pivot_longer(seg_tave_air:seginc_potet, names_to = 'feature', values_to='EG') %>%
+  group_by(season) %>%
+  mutate(EG = scale(EG)) %>%
+  ggplot(.,aes(x=seq_num,y=EG, color=feature)) +
+  geom_line()+
+  facet_wrap(~season, scales='free')
