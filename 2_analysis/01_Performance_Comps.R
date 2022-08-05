@@ -561,3 +561,121 @@ seasonal %>% filter(metric=='mean') %>%
   ggplot(.,aes(x=seq_num,y=EG, color=feature)) +
   geom_line()+
   facet_wrap(~season, scales='free')
+
+ggplot(seaonal, aes(x = seq_num*3, y= diffs_mean)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = diffs_mean-diffs_sd, ymax=diffs_mean+diffs_sd), alpha = .2)+
+  xlim(0,60)+
+  facet_wrap(~season)
+
+####### Goofing with GIFS
+library(plotly)
+library(gganimate)
+
+rgcn_egs <- read_csv('/Users/stopp/Downloads/rgcn_reach4189_egs_1985.csv')
+
+rgcn_egs %>% 
+  select(-c(seg_slope:seg_width_mean)) %>%
+  mutate(target = ifelse(seg_id_nat ==4189,'target','non-target')) %>%
+  group_by(dates,target) %>%
+  summarise(across(seg_tave_air:seginc_potet, sum)) %>%
+  pivot_longer(seg_tave_air:seginc_potet, names_to = 'Feature',values_to='EG') %>%
+  ggplot(.,aes(x = dates, y = EG, color = Feature)) +
+  geom_line()+
+  facet_wrap(~target)
+
+rgcn_egs %>% 
+  select(-c(seg_slope:seg_width_mean)) %>%
+  group_by(seg_id_nat) %>%
+  summarise(across(seg_tave_air:seginc_potet, ~sum(abs(.)))) %>%
+  pivot_longer(seg_tave_air:seginc_potet, names_to = 'Feature',values_to='EG') %>%
+  mutate(EG = ifelse(seg_id_nat == 4189, NA, EG)) %>%
+  left_join(edges) %>%
+  st_as_sf() %>%
+  ggplot(.,aes(color = EG)) +
+  geom_sf() +
+  scale_color_viridis_c(na.value='red')+
+  facet_grid(~Feature)
+
+
+plot_data <- rgcn_egs %>% filter(dates > '1985-09-15') %>%
+  left_join(edges) %>%
+  #select(-c(seg_slope:seg_width_mean)) %>%
+  #pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
+  st_as_sf() %>%
+  mutate(across(seg_tave_air:seginc_potet, ~ifelse(seg_id_nat==4189,NA,.)))
+
+ggplot(plot_data) +
+  geom_sf(aes(color=seg_rain)) +  
+  scale_color_gradient2(na.value = 'red',midpoint = 0) +
+  labs(title = 'Year: {frame_time}') +
+  transition_time(dates) +
+  ease_aes('linear')
+
+anim_save('../drb_gwnet/2_analysis/figures/rgcn_temp_gif.gif')
+
+#####GWN
+gwn_egs <- read_csv('/Users/stopp/Downloads/gwn_reach4189_egs_1985.csv')
+plot_data <- gwn_egs %>% filter(dates > '1985-09-15') %>%
+  left_join(edges) %>%
+  #select(-c(seg_slope:seg_width_mean)) %>%
+  #pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
+  st_as_sf() %>%
+  mutate(across(seg_tave_air:seginc_potet, ~ifelse(seg_id_nat==4189,NA,.)))
+
+### Static
+ggplot(plot_data) +
+  geom_sf(aes(color=seg_rain)) +  
+  scale_color_gradient2(na.value = 'red',midpoint = 0) +
+  ggthemes::theme_map()+
+  theme(legend.position = 'right')+
+  facet_wrap(~dates)
+
+#### GIF
+ggplot(plot_data) +
+  geom_sf(aes(color=seg_tave_air)) +  
+  scale_color_gradient2(na.value = 'red',midpoint = 0) +
+  labs(title = 'Year: {frame_time}') +
+  transition_time(dates) +
+  ease_aes('linear')
+
+anim_save('../drb_gwnet/2_analysis/figures/gwn_temp_gif.gif')
+
+gwn_egs %>% 
+  select(-c(seg_slope:seg_width_mean)) %>%
+  mutate(target = ifelse(seg_id_nat ==4189,'target','non-target')) %>%
+  group_by(dates,target) %>%
+  summarise(across(seg_tave_air:seginc_potet, sum)) %>%
+  pivot_longer(seg_tave_air:seginc_potet, names_to = 'Feature',values_to='EG') %>%
+  ggplot(.,aes(x = dates, y = EG, color = Feature)) +
+  geom_line() +
+  facet_wrap(~target)
+  
+
+gwn_egs %>% 
+  select(-c(seg_slope:seg_width_mean)) %>%
+  group_by(seg_id_nat) %>%
+  summarise(across(seg_tave_air:seginc_potet, ~sum(abs(.)))) %>%
+  pivot_longer(seg_tave_air:seginc_potet, names_to = 'Feature',values_to='EG') %>%
+  mutate(EG = ifelse(seg_id_nat == 4189, NA, EG)) %>%
+  left_join(edges) %>%
+  st_as_sf() %>%
+  ggplot(.,aes(color = EG)) +
+  geom_sf() +
+  scale_color_viridis_c(na.value='red')+
+  facet_grid(~Feature)
+
+gwn_values <- gwn_egs %>%
+  select(seg_id_nat, dates) %>% bind_cols(read_csv('/Users/stopp/Downloads/gwn_reach4189_inputs_1985.csv'))
+
+gwn_values %>% filter(dates > '1985-09-15') %>%
+  left_join(edges) %>%
+  st_as_sf() %>%
+  ggplot(.) +
+  geom_sf(aes(color=seg_rain)) +  
+  scale_color_viridis_c() +
+  ggthemes::theme_map()+
+  theme(legend.position = 'right')+
+  facet_wrap(~dates)
+
+gwn_egs %>% mutate(target = ifelse(seg_id_nat == 4189, 'target', 'non-target'))

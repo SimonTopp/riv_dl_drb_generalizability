@@ -296,22 +296,93 @@ egs %>%
   summarise(mean = mean(total_attribution,na.rm=T),
             sd=sd(total_attribution, na.rm=T)) %>% 
   ggplot(.,aes(x = run, y=mean, color=model))+
-  geom_point()+
+  geom_point() +
   #geom_errorbar(aes(ymax = mean+sd,ymin=mean-sd))+
   facet_wrap(~target_reach)
   
-
+###################
+####### Seasonal EGS
+###################
 eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal/GWN_ptft_seasonal_egs.csv') %>%
   mutate(model = "GWN") %>%
   bind_rows(read_csv('results/xai_outputs/egs_seasonal/RGCN_ptft_seasonal_egs.csv') %>%
               mutate(model='RGCN'))
 
-eg_seasonal %>%
+egs_seasonal_long <- eg_seasonal %>%
   select(-c(seg_slope:seg_width_mean)) %>%
   pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
   pivot_wider(names_from = metric, values_from = EG) %>%
-  ggplot(aes(x=seq_num,y=mean,color=Feature)) +
-  geom_line() +
-  facet_grid(season~model, scales='free')
+  mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
+         Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
+                          labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation')))
+
+p1 <- eg_seasonal %>%
+  select(-c(seg_slope:seg_width_mean)) %>%
+  pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
+  pivot_wider(names_from = metric, values_from = EG) %>%
+  mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
+         Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
+                          labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation'))) %>%
+  ggplot() +
+  geom_line(aes(x=seq_num,y=mean,color=Feature)) +
+  scale_color_viridis_d(option='plasma', end=.8) +
+  labs(x='Sequence Day', y = 'Mean Expected Gradient') +
+  theme_bw() +
+  facet_grid(season~model,scales='free')
+
+## A function to plot the inset 
+## This function allows us to specify which facet to annotate
+
+## A function to plot the inset 
+get_inset <- function(df, seas, mod){
+  p <- ggplot(data=df %>%
+                filter(season == seas, model == mod) %>%
+                group_by(season, model, Feature) %>%
+                summarise(total_eg = sum(abs(mean))),
+              aes(x = Feature, y = total_eg, fill=Feature)) +
+    geom_col() +
+    scale_fill_viridis_d(option='plasma', end=.8) +
+    theme_void() +
+    theme(legend.position = 'none')
+  return(p)
+}
+
+annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, data){
+  layer(data = data, stat = StatIdentity, position = PositionIdentity, 
+        geom = ggplot2:::GeomCustomAnn,
+        inherit.aes = TRUE, params = list(grob = grob,
+                                          #x=-Inf, y=Inf, label = "Top-left", hjust = 0, vjust = 1))
+                                          xmin = xmin, xmax = xmax, 
+                                          ymin = ymin, ymax = ymax))
+}
+
+p1 + annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','GWN')), 
+                     data = data.frame(season=factor("DJF", levels = c('DJF','MAM','JJA','SON')) ,model = 'GWN'),
+                     ymin = -.2, ymax=-.1, xmin=0, xmax=20) +
+  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'JJA','GWN')), 
+                     data = data.frame(season=factor("JJA", levels = c('DJF','MAM','JJA','SON')),model = 'GWN'),
+                     ymin = .025, ymax=.15, xmin=0, xmax=20) +
+  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'MAM','GWN')), 
+                     data = data.frame(season=factor("MAM", levels = c('DJF','MAM','JJA','SON')), model = 'GWN'),
+                     ymin = -.05, ymax=-.02, xmin=0, xmax=20) +
+  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'SON','GWN')), 
+                     data = data.frame(season=factor("SON", levels = c('DJF','MAM','JJA','SON')),model = 'GWN'),
+                     ymin = .01, ymax=.05, xmin=0, xmax=20) +
+  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','RGCN')), 
+                     data = data.frame(season=factor("DJF", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
+                     ymin = -.2, ymax=-.1, xmin=0, xmax=60) +
+  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'JJA','RGCN')), 
+                     data = data.frame(season=factor("JJA", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
+                     ymin = .025, ymax=.15, xmin=0, xmax=60) +
+  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'MAM','RGCN')), 
+                     data = data.frame(season=factor("MAM", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
+                     ymin = -.05, ymax=-.02, xmin=0, xmax=60) +
+  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'SON','RGCN')), 
+                     data = data.frame(season=factor("SON", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
+                     ymin = .01, ymax=.05, xmin=0, xmax=60)
+
+ggsave('../drb_gwnet/2_analysis/figures/seasonal_egs_w_insets.png', width=6, height=4, units = 'in')
   
 
+
+p2 <- 
