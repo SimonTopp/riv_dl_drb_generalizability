@@ -27,6 +27,8 @@ source('../drb_gwnet/2_Analysis/utils.R')
 
 spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
 edges <- spatial$edges %>% st_as_sf()
+dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
+  filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
 metrics <- c('overall_metrics','month_metrics','reach_metrics')
 
@@ -83,30 +85,31 @@ t.test(gwn_reps$rmse[gwn_reps$partition=='tst'],rgcn_reps$rmse[rgcn_reps$partiti
 
 ## Figure for overall difference between the two models
 
-p1 <- gwn_stats$segs %>% mutate(run = 'GraphWaveNet') %>% bind_rows(rgcn_stats$segs %>% mutate(run = 'RGCN')) %>%
+p1 <- gwn_stats$segs %>% mutate(run = 'GWN') %>% bind_rows(rgcn_stats$segs %>% mutate(run = 'RGCN')) %>%
   filter(train_type == "Full Train") %>%
   seg_plotter_sf(., 'rmse_mean') +
-  facet_wrap(~run) + labs(color = 'RMSE\n(°C)', title = ' ') +
+  geom_sf(data = dams,aes(fill = 'Reservoirs'), color='blue', size = .8) +
+  facet_wrap(~run) + labs(color = 'RMSE\n(°C)', fill = '',title = ' ') +
   theme(legend.title = element_text(size=8))
 
 p1
 
-baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GraphWaveNet',shape=edges)
+baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GWN',shape=edges)
 
 
 ###Take a look at how performance varies with reach type
 res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds')
 res_metrics <- baseline_diff %>% left_join(res_info) %>%
-  mutate(res_group = if_else(type_res %in% c('contains_reservoir',"within_reservoir", "downstream of reservoir (1)","downstream of reservoir (2)"), 'Impacted','Not Impacted', "reservoir_outlet_reach")) %>%
+  mutate(res_group = if_else(type_res %in% c("contains_reservoir","within_reservoir", "downstream of reservoir (1)","reservoir_inlet_reach","downstream of reservoir (2)", "reservoir_outlet_reach"), 'Impacted','Not Impacted')) %>%
   group_by(res_group,metric) %>%
   summarise(RGCN = median(RGCN, na.rm=T),
-            GraphWaveNet = median(GraphWaveNet, na.rm=T),
+            GraphWaveNet = median(GWN, na.rm=T),
             count = n())
 
 res_metrics <- baseline_diff %>% left_join(res_info) %>%
   group_by(type_res, metric) %>%
   summarise(RGCN = median(RGCN, na.rm=T),
-            GraphWaveNet = median(GraphWaveNet, na.rm=T),
+            GraphWaveNet = median(GWN, na.rm=T),
             count = n())
 
 p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
@@ -116,7 +119,7 @@ p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'met
 
 
 p3 <- rgcn_stats$months %>% filter(partition == 'tst',train_type=='Full Train') %>% mutate(model= 'RGCN') %>%
-  bind_rows(gwn_stats$months %>% filter(partition == 'tst',train_type=='Full Train') %>% mutate(model = 'GraphWaveNet')) %>%
+  bind_rows(gwn_stats$months %>% filter(partition == 'tst',train_type=='Full Train') %>% mutate(model = 'GWN')) %>%
   pivot_longer(c(rmse_mean, mean_bias_mean)) %>%
   mutate(name = factor(name, levels = c('rmse_mean', 'mean_bias_mean'), labels = c('RMSE','Bias')),
          month = month(date, label = T)) %>%
@@ -999,6 +1002,11 @@ finetune_logs <- view_train_longs('../river-dl/results/baseline/GWN') %>%
   bind_rows(view_train_longs('../river-dl/results/baseline/RGCN') %>%
               mutate(model='RGCN')) %>%
   filter(run=='full_train')
+
+pt_logs <- view_train_longs('../river-dl/results/baseline/GWN', pretrain=T) %>% mutate(model='GWN')%>%
+  bind_rows(view_train_longs('../river-dl/results/baseline/RGCN', pretrain=T) %>% mutate(model='RGCN')) %>%
+  group_by(model) %>%
+  summarise(time=mean(time))
 
 training_times <- finetune_logs %>%group_by(model) %>%
   summarise(time = median(time),

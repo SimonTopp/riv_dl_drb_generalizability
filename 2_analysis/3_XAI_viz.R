@@ -22,7 +22,7 @@ edges <- spatial$edges %>% st_as_sf()
 llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv') %>%
   mutate(test_group=ifelse(test_group=='Piedmont','Headwaters',test_group))
 
-reach_noise <- aggregate_xai('results/xai_outputs/noise_annual', 'reach_noise')
+reach_noise <- aggregate_xai('results/xai_outputs/noise_annual_shuffle', 'reach_noise')
 
 dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach

@@ -10,14 +10,19 @@ view_test_results <- function(folder){
 }
 
 
-view_train_longs <- function(folder){
+view_train_longs <- function(folder,pretrain=F){
   
-  files <- list.files(folder, full.names = T, recursive = T, pattern = 'finetune_log.csv')
+  if(pretrain==T){
+    files <- list.files(folder, full.names = T, recursive = T, pattern = 'pretrain_log.csv')
+    runs <- c(0:9)
+    train_logs <- map2_dfr(files,runs, ~read_csv(.x) %>% mutate(run=.y))
+  }else if(pretrain==F){
+    files <- list.files(folder, full.names = T, recursive = T, pattern = 'finetune_log.csv')
   
-  runs <- list.dirs(folder, recursive =F) %>% map(~str_split(., pattern ='/') %>% flatten() %>% last(.)) %>% unlist()
+    runs <- list.dirs(folder, recursive =F) %>% map(~str_split(., pattern ='/') %>% flatten() %>% last(.)) %>% unlist()
   
-  train_logs <- runs %>% map_dfr(reader, files = files)
-  
+    train_logs <- runs %>% map_dfr(reader, files = files)
+  }
   return(train_logs)
 }
 
@@ -213,7 +218,7 @@ combine_replicates = function(folder, pattern,subfolders = F){
                    ifelse(grepl('pre',dir),'pre_train_only','Unknown Group'))))
       scenario = ifelse(grepl('baseline',dir),'Baseline',
                  ifelse(grepl('min', dir),'Train Hot/Test Cold',
-                 ifelse(grepl('max', dir),'Train Cold/Test Hot',
+                 ifelse(grepl('max', dir),'Warming',
                  ifelse(grepl('drought', dir),'Drought',
                  ifelse(grepl('appalachians', dir),'Appalachians',
                  ifelse(grepl('coastal', dir),'Coastal',
