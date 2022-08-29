@@ -627,7 +627,8 @@ ggplot(seaonal, aes(x = seq_num*3, y= diffs_mean)) +
 library(plotly)
 library(gganimate)
 
-rgcn_egs <- read_csv('/Users/stopp/Downloads/rgcn_reach4189_egs_1985.csv')
+rgcn_egs <- read_csv('results/xai_outputs/last_day_egs_tst/rgcn_reach4189_3.csv')
+max(rgcn_egs$dates)
 
 rgcn_egs %>% 
   select(-c(seg_slope:seg_width_mean)) %>%
@@ -653,15 +654,25 @@ rgcn_egs %>%
   facet_grid(~Feature)
 
 
-plot_data <- rgcn_egs %>% filter(dates > '1985-09-15') %>%
+plot_data <- rgcn_egs %>% filter(dates > max(rgcn_egs$dates-14)) %>%
   left_join(edges) %>%
   #select(-c(seg_slope:seg_width_mean)) %>%
   #pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
   st_as_sf() %>%
   mutate(across(seg_tave_air:seginc_potet, ~ifelse(seg_id_nat==4189,NA,.)))
 
+
+### Static
 ggplot(plot_data) +
-  geom_sf(aes(color=seg_rain)) +  
+  geom_sf(aes(color=seg_tave_air)) +  
+  scale_color_gradient2(na.value = 'red',midpoint = 0) +
+  ggthemes::theme_map()+
+  theme(legend.position = 'right')+
+  facet_wrap(~dates)
+
+### GIF
+ggplot(plot_data) +
+  geom_sf(aes(color=seg_tave_air)) +  
   scale_color_gradient2(na.value = 'red',midpoint = 0) +
   labs(title = 'Year: {frame_time}') +
   transition_time(dates) +
@@ -670,8 +681,34 @@ ggplot(plot_data) +
 anim_save('../drb_gwnet/2_analysis/figures/rgcn_temp_gif.gif')
 
 #####GWN
-gwn_egs <- read_csv('/Users/stopp/Downloads/gwn_reach4189_egs_1985.csv')
-plot_data <- gwn_egs %>% filter(dates > '1985-09-15') %>%
+gwn_egs <- read_csv('results/xai_outputs/last_day_egs_tst/gwn_reach4189_3.csv')
+
+gwn_egs %>% 
+  select(-c(seg_slope:seg_width_mean)) %>%
+  mutate(target = ifelse(seg_id_nat ==4189,'target','non-target')) %>%
+  group_by(dates,target) %>%
+  summarise(across(seg_tave_air:seginc_potet, sum)) %>%
+  pivot_longer(seg_tave_air:seginc_potet, names_to = 'Feature',values_to='EG') %>%
+  ggplot(.,aes(x = dates, y = EG, color = Feature)) +
+  geom_line()+
+  facet_wrap(~target)
+
+gwn_egs %>% 
+  select(-c(seg_slope:seg_width_mean)) %>%
+  group_by(seg_id_nat) %>%
+  summarise(across(seg_tave_air:seginc_potet, ~sum(abs(.)))) %>%
+  pivot_longer(seg_tave_air:seginc_potet, names_to = 'Feature',values_to='EG') %>%
+  mutate(EG = ifelse(seg_id_nat == 4189, NA, EG)) %>%
+  left_join(edges) %>%
+  st_as_sf() %>%
+  ggplot(.,aes(color = EG)) +
+  geom_sf() +
+  scale_color_viridis_c(na.value='red')+
+  facet_grid(~Feature)
+
+max(gwn_egs$dates)
+
+plot_data <- gwn_egs %>% filter(dates > max(gwn_egs$dates) - 14) %>%
   left_join(edges) %>%
   #select(-c(seg_slope:seg_width_mean)) %>%
   #pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
@@ -680,7 +717,7 @@ plot_data <- gwn_egs %>% filter(dates > '1985-09-15') %>%
 
 ### Static
 ggplot(plot_data) +
-  geom_sf(aes(color=seg_rain)) +  
+  geom_sf(aes(color=seg_tave_air)) +  
   scale_color_gradient2(na.value = 'red',midpoint = 0) +
   ggthemes::theme_map()+
   theme(legend.position = 'right')+

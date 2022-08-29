@@ -153,7 +153,7 @@ p2 <- baseline %>%
     geom_sf(aes(color = diffs)) + 
     geom_sf(data = dams, aes(fill = 'Reservoirs'),color='light blue', size =.5) +  
     #scale_color_viridis_c(limits = c(ll,ul),
-    #                      labels = c('<2',3,4,5,6,7),direction=-1) +
+    #                      labels = c('<2',3,4,5,6,7),direction=1) +
     scale_color_viridis_c(breaks=c(-2,2),labels=c('Low','High'))+#direction=-1)+
     facet_wrap(~model) +
     labs( fill  = ' ',color = 'Spatial\nSensitivity') +
