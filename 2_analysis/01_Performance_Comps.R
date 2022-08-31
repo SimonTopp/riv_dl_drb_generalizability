@@ -41,7 +41,7 @@ replicate_sigs <- replicate_comps('results/baseline/GWN/full_train','results/bas
   bind_rows(replicate_comps('results/Drought/GWN/full_train','results/Drought/RGCN/full_train', 'Drought')) %>%
   mutate(best = ifelse(estimate1<estimate2, "GWN","RGCN"))
 
-overall_sigs <- replicate_sigs %>% filter(group == 'overall') %>%
+overall_sigs <- replicate_sigs %>% filter(group == 'Overall') %>%
   mutate(sig_lvl = case_when(p.value>0.1~' ',
                              p.value <= 0.01~'***',
                              p.value <=0.05~'**',
@@ -49,7 +49,7 @@ overall_sigs <- replicate_sigs %>% filter(group == 'overall') %>%
                              )) %>%
   mutate(scenario = factor(scenario, levels=c('Baseline', 'Drought','Warming','Train Hot/Test Cold',
                                     'Headwaters','Appalachians','Coastal')))
-warmest_sigs <- replicate_sigs %>% filter(group == 'warmest10') %>%
+warmest_sigs <- replicate_sigs %>% filter(group == 'Warmest 10%') %>%
   mutate(sig_lvl = case_when(p.value>0.1~' ',
                              p.value <= 0.01~'***',
                              p.value <=0.05~'**',
@@ -161,15 +161,15 @@ best_table(full_temps, 'GWN', 'Overall')
 
 
 ########
-### Make one just for Full Train and No PT
+### One for manuscript
 #######
 full_temps %>% filter(partition == 'tst',
-                      run != 'Train Hot/Test Cold') %>%
+                      run != 'Train Hot/Test Cold',
+                      train_type=='Full Train') %>%
   reshape_metric(.,'rmse',c('partition','run','model','train_type')) %>%
-  filter(group %in% c("Overall","Warmest 10%"),
-         train_type == 'Full Train') %>%
+  filter(group %in% c("Overall","Warmest 10%")) %>%
   select(run, group, mean, sd, model) %>%
-  left_join(overall_sigs %>% select(run = scenario, model=best, sig_lvl)) %>%
+  left_join(overall_sigs %>% bind_rows(warmest_sigs) %>% select(run = scenario, model=best, sig_lvl, group)) %>%
   mutate(mean = paste0(round(mean,2),' (',round(sd,2),')',sig_lvl),
          mean = gsub('NA',' ', mean)) %>%
   select(-sig_lvl,-sd)%>%
@@ -184,11 +184,14 @@ full_temps %>% filter(partition == 'tst',
   kable_paper() %>%
   column_spec(2, bold = c(F,T,T,T,T,T))%>%
   column_spec(3, bold = c(T,F,F,F,F,F)) %>%
-  column_spec(4, bold = c(T,T,T,T,T,T))%>%
-  column_spec(5, bold = c(F,F,F,F,F,F)) %>%
+  column_spec(4, bold = c(T,T,T,T,F,T))%>%
+  column_spec(5, bold = c(F,F,F,F,T,F)) %>%
   pack_rows('Domain Shift',2,3)%>%
   pack_rows('Geographic Shift',4,6) %>%
   add_header_above(c(" ", "RMSE (ºC); mean (st. dev)" = 4))
+
+#############
+#############
 
 full_temps %>% filter(partition == 'tst',
                       run != 'Train Hot/Test Cold') %>%
@@ -407,6 +410,78 @@ annotate_figure(g,bottom = text_grob("Change in RMSE (ºC) from Baseline (Negati
                 )
 ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance.png',width = 6,height=3, units = 'in')
 
+
+###############
+############
+## Do it again but account for all combinations of replicate runs
+############
+############
+files_gwn <- c('results/Drought/GWN/full_train/', 'results/LTO/max/GWN/full_train/', 'results/LLO/appalachians/GWN/full_train/',
+           'results/LLO/coastal/GWN/full_train/','results/LLO/piedmont/GWN/full_train/')
+files_rgcn <- c('results/Drought/RGCN/full_train/', 'results/LTO/max/RGCN/full_train/', 'results/LLO/appalachians/RGCN/full_train/',
+           'results/LLO/coastal/RGCN/full_train/','results/LLO/piedmont/RGCN/full_train/')
+
+names <- c('Drought','Warming','Appalachians','Coastal','Headwaters')
+
+rep_comps <- map2_dfr(files_gwn, names, ~replicate_comps('results/baseline/GWN/full_train/', .x, .y)) %>%
+  mutate(model = 'GWN', group = 'Overall') %>% 
+  bind_rows(
+    map2_dfr(files_rgcn, names, ~replicate_comps('results/baseline/GWN/full_train/', .x, .y)) %>% 
+      mutate(model ='RGCN', group = "Overall")
+  ) %>% 
+  bind_rows(
+    map2_dfr(files_gwn, names, ~replicate_comps('results/baseline/GWN/full_train/', .x, .y, metric='rmse_top10')) %>% 
+      mutate(model ='GWN', group = "Warmest 10%")
+  ) %>% 
+  bind_rows(
+    map2_dfr(files_rgcn, names, ~replicate_comps('results/baseline/GWN/full_train/', .x, .y,metric='rmse_top10')) %>% 
+      mutate(model ='RGCN', group = "Warmest 10%")
+  ) %>%
+  mutate(run = factor(run,levels = c('Headwaters','Appalachians','Coastal','Warming','Drought')))
+
+p1 <- rep_comps %>%
+  filter(run %in% c("Headwaters","Appalachians",'Coastal')) %>%
+  mutate(se = sd/sqrt(10)) %>%
+  ggplot(., aes(x=run, y=mean,fill = model)) +
+  geom_col(position='dodge')+
+  geom_errorbar(position=position_dodge(width=1),aes(ymin=mean-se, ymax=mean+se), width=.3) +
+  geom_hline(aes(yintercept=0),color = 'black') +
+  scale_fill_viridis_d(end=.6)+
+  labs(fill='Model')+
+  theme_bw() +
+  theme(
+    legend.position = 'none',
+    axis.title = element_blank()
+  )+
+  coord_flip() +
+  facet_wrap(~group, ncol = 1)
+
+p1
+
+p2 <- rep_comps %>%
+  filter(run %in% c('Warming','Drought')) %>%
+  mutate(se = sd/sqrt(10)) %>%
+  ggplot(., aes(x=run, y=mean,fill = model)) +
+  geom_col(position='dodge')+
+  geom_errorbar(position=position_dodge(width=1),aes(ymin=mean-se, ymax=mean+se), width=.3) +
+  geom_hline(aes(yintercept=0),color = 'black') +
+  scale_fill_viridis_d(end=.6)+
+  labs(fill='Model')+
+  theme_bw() +
+  theme(
+    legend.position = 'none',
+    axis.title = element_blank()
+  )+
+  coord_flip() +
+  facet_wrap(~group,ncol = 1)
+
+g <- ggarrange(p1, p2, ncol=2,widths=c(.52,.48),common.legend = T,legend='right', vjust=0,hjust=-1)
+annotate_figure(g,bottom = text_grob("Change in RMSE (ºC) from Baseline (Negative == Worse Performance)"),
+                left = text_grob("Hold-Out Scenario", rot = 90), top=text_grob('Geographic Shift                              Domain Shift', hjust=.5)
+)
+
+
+ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_wSE.png',width = 6,height=3, units = 'in')
 
 
 ################

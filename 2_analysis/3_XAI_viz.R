@@ -27,103 +27,6 @@ reach_noise <- aggregate_xai('results/xai_outputs/noise_annual_shuffle', 'reach_
 dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
-plot_reach_noise <- function(df, mod, scenario, title, ll=F, ul=F){
-    
-  df <- df %>% filter(model == mod, run == scenario) %>%
-      inner_join(edges)
-  max = max(df$diffs)
-  
-  p1 <- ggplot(df,aes(x = diffs)) +
-    geom_histogram() +
-    xlim(0,8) +
-    ggtitle(title)+
-    theme_bw()
-  
-  
-  p2 <- ggplot(df, aes(geometry = geometry)) + 
-    geom_sf(aes(color = diffs)) + 
-    scale_color_viridis_c(limits=c(0,max), direction = -1) + 
-    ggthemes::theme_map() +
-    theme(legend.position = 'right')
-  if(ll){
-    df <- df %>%
-      mutate(diffs = ifelse(diffs < ll, ll, diffs),
-             diffs = ifelse(diffs > ul, ul, diffs))
-    p2 <- ggplot(df, aes(geometry = geometry)) + 
-      geom_sf(aes(color = diffs)) + 
-      geom_sf(data = dams, aes(fill = 'Dams'), size = .3) +  
-      scale_color_viridis_c(limits = c(ll,ul),direction = -1) + 
-      ggthemes::theme_map() +
-      theme(legend.position = 'right') 
-  }
-  
-  #gridExtra::grid.arrange(p1,p2, ncol=1,heights = c(.2,.8))
-  ggpubr::ggarrange(p1,p2,ncol=1, heights = c(.2,.6))
-}
-
-p1<- plot_reach_noise(reach_noise,'GWN','ptft','GWN PT/FT Weights',ll=2,ul=5)
-p2<- plot_reach_noise(reach_noise,'GWN','coast_ptft','GWN Head PT/FT Weights',ll=2,ul=5)
-
-p1<- plot_reach_noise(reach_noise,'RGCN','ptft','RGCN PT/FT Weights',ll=2,ul=5)
-p2<- plot_reach_noise(reach_noise,'RGCN','coast_ptft','RGCN Coast PT/FT Weights',ll=2,ul=5)
-
-p2<- plot_reach_noise(reach_noise,'RGCN','ptft','RGCN PT/FT Weights',ll=2,ul=5)
-gridExtra::grid.arrange(p1,p2,nrow=1)
-
-p1<- plot_reach_noise(reach_noise,'GWN','pt','GWN Pretrain Weights')
-p2<- plot_reach_noise(reach_noise,'GWN','ptft','GWN PT/FT Weights')
-p3 <- plot_reach_noise(reach_noise,'GWN','nopt','GWN No PT Weights')
-p4 <- plot_reach_noise(reach_noise,'GWN','rs_adj','GWN RS Adj Weights')
-
-
-pgwn <- ggpubr::ggarrange(p1,p2,p3,p4, nrow=1,common.legend = T)
-
-
-p1<- plot_reach_noise(reach_noise,'RGCN','pt','RGCN Pretrain Weights')
-p2<- plot_reach_noise(reach_noise,'RGCN','ptft','RGCN PT/FT Weights')
-p3 <- plot_reach_noise(reach_noise,'RGCN','nopt','RGCN No PT Weights')
-p4 <- plot_reach_noise(reach_noise,'RGCN','rs_adj','GWN RS Adj Weights')
-
-prgcn <- ggpubr::ggarrange(p1,p2,p3,p4, nrow=1,common.legend = T)
-
-ggpubr::ggarrange(pgwn,prgcn,nrow=2)
-
-
-p1<- plot_reach_noise(reach_noise,'GWN','pt','GWN Pretrain Weights')
-p2<- plot_reach_noise(reach_noise,'GWN','coast_ptft','GWN PT/FT Weights')
-p3 <- plot_reach_noise(reach_noise,'GWN','coast_nopt','GWN No PT Weights')
-
-
-pgwn <- ggpubr::ggarrange(p1,p2,p3, nrow=1,common.legend = T)
-
-
-p1<- plot_reach_noise(reach_noise,'RGCN','pt','RGCN Pretrain Weights')
-p2<- plot_reach_noise(reach_noise,'RGCN','coast_ptft','RGCN PT/FT Weights')
-p3 <- plot_reach_noise(reach_noise,'RGCN','coast_nopt','RGCN No PT Weights')
-
-prgcn <- ggpubr::ggarrange(p1,p2,p3, nrow=1,common.legend = T)
-
-ggpubr::ggarrange(pgwn,prgcn,nrow=2)
-
-
-
-p1<- plot_reach_noise(reach_noise,'GWN','pt','GWN Pretrain Weights')
-p2<- plot_reach_noise(reach_noise,'GWN','head_ptft','GWN PT/FT Weights')
-p3 <- plot_reach_noise(reach_noise,'GWN','head_nopt','GWN No PT Weights')
-
-
-pgwn <- ggpubr::ggarrange(p1,p2,p3, nrow=1,common.legend = T)
-
-
-p1<- plot_reach_noise(reach_noise,'RGCN','pt','RGCN Pretrain Weights')
-p2<- plot_reach_noise(reach_noise,'RGCN','head_ptft','RGCN PT/FT Weights')
-p3 <- plot_reach_noise(reach_noise,'RGCN','head_nopt','RGCN No PT Weights')
-
-prgcn <- ggpubr::ggarrange(p1,p2,p3, nrow=1,common.legend = T)
-
-ggpubr::ggarrange(pgwn,prgcn,nrow=2)
-
-
 ############## Baseline comps figs
 baseline <- reach_noise %>% filter(run == 'ptft') %>%
   inner_join(edges)
@@ -139,8 +42,8 @@ p1 <- ggplot(baseline, aes(x = diffs)) +
        fill = 'Model') +
   theme_minimal()
 
-ll = 2
-ul = 7
+#ll = 2
+#ul = 7
 normalize <- function(x, na.rm = TRUE) {
   return((x- min(x)) /(max(x)-min(x)))
 }
@@ -156,7 +59,7 @@ p2 <- baseline %>%
     #                      labels = c('<2',3,4,5,6,7),direction=1) +
     scale_color_viridis_c(breaks=c(-2,2),labels=c('Low','High'))+#direction=-1)+
     facet_wrap(~model) +
-    labs( fill  = ' ',color = 'Spatial\nSensitivity') +
+    labs( fill  = ' ',color = 'Normalized\nSpatial\nSensitivity') +
     ggthemes::theme_map() +
     theme(legend.position = 'right',
           legend.justification = 'center',
@@ -165,11 +68,11 @@ p2 <- baseline %>%
 
 g<-gridExtra::grid.arrange(p1,p2,nrow=2,heights=c(.25,.75))
 
-ggsave('../drb_gwnet/2_analysis/figures/annual_reach_noise_ptft_scaled.png', 
+ggsave('../drb_gwnet/2_analysis/figures/annual_reach_noise_ptft_scaled_shuffle.png', 
        plot=g, width=4, height=5, units = 'in')
 
 
-  ### Based on spatial join
+### Based on spatial join
 dam_inf <- baseline %>% st_as_sf(., sf_column_name = 'geometry')%>%
   st_join(dams %>% select(DAM_NAME, AREA_SKM) %>% st_buffer(500)) %>%
   st_set_geometry(NULL)%>%
@@ -185,6 +88,7 @@ dam_inf <- baseline %>% st_as_sf(., sf_column_name = 'geometry')%>%
 ##### Based on Res Info
 res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds') %>%
   mutate(dam = if_else(type_res %in% c('reservoir_inlet_reach', 'contains_reservoir',"within_reservoir", "downstream of reservoir (1)","reservoir_outlet_reach"), 'Dam','Not Dam'))
+
 dam_inf <- baseline %>%
   left_join(res_info %>% select(seg_id_nat, dam)) %>%
   #group_by(model) %>%
@@ -195,8 +99,32 @@ dam_inf <- baseline %>%
   pivot_wider(names_from = 'dam',values_from = dam_inf) %>%
   mutate(diff_dams = (`Not Dam`-Dam)/`Not Dam`)
 
+###### Width vs sensitivity
+read_csv('data_DRB/DRB_spatial/seg_widths_mean.csv') %>% 
+  right_join(baseline) %>%
+  ggplot(aes(x=seg_width_mean, y = diffs, color = subseg_seg)) +
+  geom_point() +
+  scale_color_viridis_c(trans='log10') +
+  geom_smooth(method='lm') +
+  facet_wrap(~model)
 
-eg_files <- list.files('results/xai_outputs/egs_reach_anual/', full.names = T)
+read_csv('data_DRB/DRB_spatial/seg_widths_mean.csv') %>% 
+  right_join(baseline) %>%
+  group_by(model) %>%
+  summarise(corr = cor.test(seg_width_mean, diffs) %>% broom::tidy(.))
+#########
+
+
+
+##############
+### Seasonal permutation viz/results
+########
+seasonal_egs <- aggregate_xai('results/xai_outputs/noise_seasonal/', 'seasonal_noise')
+
+
+
+
+eg_files <- list.files('results/xai_outputs/egs_reach_anual_tst_2015/', full.names = T)
 egs <- map_dfr(eg_files, read_csv)
 
 
@@ -303,10 +231,31 @@ egs %>%
 ###################
 ####### Seasonal EGS
 ###################
-eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal/GWN_ptft_seasonal_egs.csv') %>%
+eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal_tst_2015/GWN_ptft_seasonal_egs.csv') %>%
   mutate(model = "GWN") %>%
-  bind_rows(read_csv('results/xai_outputs/egs_seasonal/RGCN_ptft_seasonal_egs.csv') %>%
+  bind_rows(read_csv('results/xai_outputs/egs_seasonal_tst_2015/RGCN_ptft_seasonal_egs.csv') %>%
               mutate(model='RGCN'))
+
+#########
+## Test with 2015 non-averaged data
+#####
+eg_seasonal %>% filter(model == 'RGCN') %>%
+  group_by(model, seq_index, seg_id_nat) %>%
+  mutate(sequence_day = 1:n(),
+         month = month(max(date)),
+         season = ifelse(month %in% c(12,1,2), 'DJF',
+                         ifelse(month %in% c(3,4,5), 'MAM',
+                                ifelse(month %in% c(6,7,8), 'JJA', 'SON')))) %>%
+  ggplot(aes(x=sequence_day, y = seg_tave_air, group=seg_id_nat)) +
+  geom_line(alpha=.02) +
+  facet_wrap(~season, scales='free')
+###################
+eg_seasonal %>% group_by(model, seq_index, date) %>%
+  summarise(across(seg_slope:seginc_potet, c(mean,sd)),
+            month = max(month(date)))# %>%
+  ggplot(aes(x=date, y = seg_tave_air, group=seq_index)) +
+  geom_line() +
+  facet_grid(month~model, scales='free')
 
 egs_seasonal_long <- eg_seasonal %>%
   select(-c(seg_slope:seg_width_mean)) %>%

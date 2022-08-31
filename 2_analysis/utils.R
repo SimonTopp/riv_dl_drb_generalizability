@@ -335,14 +335,14 @@ reshape_metric <- function(log, metric,keep_vars= c('partition'),difference=FALS
   cols_mean <- paste(metric,c('mean','top10_mean','bot10_mean'), sep ='_')
   cols_out <- gsub('_mean','',cols_mean)
   out_mean <- log %>%
-    select(all_of(keep_vars), all_of(cols_mean)) %>%
+    select(all_of(c(keep_vars,cols_mean))) %>%
     pivot_longer(-all_of(keep_vars), names_to = 'group', values_to = 'mean') %>%
     mutate(group = gsub('_mean','',group))
   
   cols_sd <- paste(metric,c('sd','top10_sd','bot10_sd'), sep='_')
   
   out_sd <- log %>% 
-    select(all_of(keep_vars),all_of(cols_sd)) %>%
+    select(all_of(c(keep_vars, cols_sd))) %>%
     pivot_longer(-all_of(keep_vars), names_to = 'group', values_to = 'sd') %>%
     mutate(group = gsub('_sd','',group))
   
@@ -358,13 +358,13 @@ reshape_metric <- function(log, metric,keep_vars= c('partition'),difference=FALS
       left_join(baseline) %>%
       mutate(performance_change = baseline_mean-mean,
              group= factor(group, levels=cols_out,
-                           labels=c('Overall','Coldest 10%','Warmest 10%')),
+                           labels=c('Overall','Warmest 10%','Coldest 10%')),
              run = factor(run))
     )
   }else{
     return(out %>%
              mutate(group= factor(group, levels=cols_out,
-                         labels=c('Overall','Coldest 10%','Warmest 10%')),
+                         labels=c('Overall','Warmest 10%','Coldest 10%')),
                     run = factor(run))
     )
   }
@@ -415,9 +415,29 @@ replicate_comps <- function(run1,run2, scenario){
   run_1 <- read_replicates(run1, 'overall_metrics')
   run_2 <- read_replicates(run2, 'overall_metrics')
   sig_test<-t.test(run_1$rmse[run_1$partition=='tst'],run_2$rmse[run_2$partition=='tst']) %>%
-    broom::tidy() %>% mutate(group='overall') %>%
+    broom::tidy() %>% mutate(group='Overall') %>%
     bind_rows(t.test(run_1$rmse_top10[run_1$partition=='tst'],run_2$rmse_top10[run_2$partition=='tst']) %>%
-                broom::tidy() %>% mutate(group='warmest10')) %>%
+                broom::tidy() %>% mutate(group='Warmest 10%')) %>%
     mutate(scenario = scenario)
   return(sig_test)
+}
+
+
+
+### Try to get mean and sd changes from baseline for both models
+
+replicate_comps <- function(baseline, scenario, scenario_label, metric='rmse'){
+  
+  run_1 <- read_replicates(baseline, 'overall_metrics') %>%
+    filter(partition == 'tst')
+  run_2 <- read_replicates(scenario, 'overall_metrics') %>%
+    filter(partition=='tst')
+  
+  all_combos <- expand_grid(baseline = run_1[,metric][[1]], scenario=run_2[,metric][[1]]) %>%
+    mutate(diff = baseline-scenario)
+  
+  diffs <- tibble(mean = mean(all_combos$diff),
+                  sd =sd(all_combos$diff), 
+                  run=scenario_label)
+  return(diffs)
 }
