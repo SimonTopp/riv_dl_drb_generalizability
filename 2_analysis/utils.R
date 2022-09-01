@@ -426,7 +426,7 @@ replicate_comps <- function(run1,run2, scenario){
 
 ### Try to get mean and sd changes from baseline for both models
 
-replicate_comps <- function(baseline, scenario, scenario_label, metric='rmse'){
+compare_replicate_pairs <- function(baseline, scenario, scenario_label, metric='rmse'){
   
   run_1 <- read_replicates(baseline, 'overall_metrics') %>%
     filter(partition == 'tst')

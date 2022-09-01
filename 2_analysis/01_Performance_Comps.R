@@ -170,7 +170,8 @@ full_temps %>% filter(partition == 'tst',
   filter(group %in% c("Overall","Warmest 10%")) %>%
   select(run, group, mean, sd, model) %>%
   left_join(overall_sigs %>% bind_rows(warmest_sigs) %>% select(run = scenario, model=best, sig_lvl, group)) %>%
-  mutate(mean = paste0(round(mean,2),' (',round(sd,2),')',sig_lvl),
+  mutate(sd = sd/sqrt(10), ###Use Standard Error
+         mean = paste0(round(mean,2),' (',round(sd,2),')',sig_lvl),
          mean = gsub('NA',' ', mean)) %>%
   select(-sig_lvl,-sd)%>%
   pivot_wider(names_from=c(model,group), 
@@ -188,7 +189,7 @@ full_temps %>% filter(partition == 'tst',
   column_spec(5, bold = c(F,F,F,F,T,F)) %>%
   pack_rows('Domain Shift',2,3)%>%
   pack_rows('Geographic Shift',4,6) %>%
-  add_header_above(c(" ", "RMSE (ºC); mean (st. dev)" = 4))
+  add_header_above(c(" ", "RMSE (ºC); mean (SE)" = 4))
 
 #############
 #############

@@ -8,6 +8,7 @@ library(ggridges)
 library(ggpubr)
 library(knitr)
 library(kableExtra)
+library(patchwork)
 
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 setwd('../../river-dl')
@@ -119,11 +120,22 @@ read_csv('data_DRB/DRB_spatial/seg_widths_mean.csv') %>%
 ##############
 ### Seasonal permutation viz/results
 ########
-seasonal_egs <- aggregate_xai('results/xai_outputs/noise_seasonal/', 'seasonal_noise')
+seasonal_noise <- aggregate_xai('results/xai_outputs/noise_seasonal_shuffle/', 'GWN_ptft')  %>%
+  mutate(model = 'GWN') %>%
+  bind_rows(aggregate_xai('results/xai_outputs/noise_seasonal_shuffle/', 'RGCN_ptft')  %>%
+              mutate(model = 'RGCN'))
+
+ggplot(seasonal_noise, aes(x=seq_num*3+2)) +
+  geom_line(aes(y = diffs_mean,color=model)) +
+  geom_ribbon(aes(ymin=diffs_mean-diffs_sd, ymax=diffs_mean+diffs_sd,fill=model),alpha=.2) +
+  xlim(0,60)+
+  facet_wrap(~season)
 
 
 
-
+#########
+###Reach EGS manuscript fig
+########
 eg_files <- list.files('results/xai_outputs/egs_reach_anual_tst_2015/', full.names = T)
 egs <- map_dfr(eg_files, read_csv)
 
@@ -178,42 +190,48 @@ plot_reach <- function(reach, scenario='ptft',legend_label=' '){
            total_attribution = ifelse(total_attribution>.01,.01,total_attribution)) %>%
     left_join(edges)%>%
     st_as_sf()%>%
-    st_intersection(aoi) %>%
+    #st_intersection(aoi) %>%
+    #st_intersection(edges) %>%
     ggplot(.) +
     geom_sf(aes(color = total_attribution, geometry=geometry)) +
-    geom_sf(data=aoi,color='transparent',fill='transparent')+
+    #geom_sf(data=aoi,color='transparent',fill='transparent')+
     scale_color_viridis_c(na.value = 'red',begin=.1, limits=c(0,.01), 
                           labels = c('0.00%','0.25%','0.5%','0.75%','>1.00%'))+#,labels=scales::percent) +
     labs(color=legend_label) +
     facet_wrap(~model,nrow=1) +
     ggthemes::theme_map() +
-    theme(legend.position = 'bottom',
-          legend.justification = 'center',
+    theme(#legend.position = 'bottom',
+          #legend.justification = 'center',
           panel.background = element_rect(color='transparent',fill='black'))
 }
 
 drb_bounds <- st_read('data_DRB/DRB_spatial/drbbnd/drb_bnd_polygon.shp') %>%
   st_transform(crs = st_crs(edges))
 
-p1 <- plot_reach(1577,scenario='ptft',legend_label='Average\nAttribution')
-p2 <- plot_reach(1487,scenario='ptft',legend_label='Average\nAttribution')
-p3 <- plot_reach(2318,scenario='ptft',legend_label='Average\nAttribution')
-p4<- plot_reach(4189,scenario='ptft',legend_label='Average\nAttribution')
+p1 <- plot_reach(1577,scenario='ptft',legend_label='Percent Attribution') +labs(subtitle = 'A')
+p2 <- plot_reach(1487,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'B')
+p3 <- plot_reach(2318,scenario='ptft',legend_label='Percent Attribution')
+p4<- plot_reach(4189,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'C')
 
 target_reaches <- edges %>%
   filter(seg_id_nat %in% c(1577,1487,4189)) %>%
-  st_centroid()
+  st_centroid() %>%
+  mutate(labs=c('B','A','C'))
 
 p_summary <- ggplot(drb_bounds) +
-  geom_sf(fill='black', alpha = .9) +
-  geom_sf(data = edges,color='light blue') +
-  geom_sf_text(data=target_reaches,label="★", size=3, family = "HiraKakuPro-W3", color='red')+
+  geom_sf(fill='white', alpha = .9) +
+  geom_sf(data = edges,color='light blue', alpha=.6) +
+  geom_sf_text(data=target_reaches,aes(label=labs), size=4, color='red')+
   ggthemes::theme_map()
-
-g <- p_summary|(p1/p2/p4 & theme(legend.position = "right")) + plot_layout(guides = "collect")
+#"★"  family = "HiraKakuPro-W3"
+patch <- (p1|p2|p4) + 
+                  plot_layout(guides='collect') &
+        theme(legend.position = 'bottom') 
+g <- p_summary+(patch) +
+  plot_layout(nrow=1,widths=c(.2,.8))
 g
 
-ggsave('../drb_gwnet/2_analysis/figures/reach_egs_4panel.png',plot=g,width=5,height=4.5,units='in')
+ggsave('../drb_gwnet/2_analysis/figures/reach_egs_4panel_2015.png',plot=g,width=6,height=3,units='in')
 
 ####### Look at distribution of attribution across reaches
 egs %>%
@@ -231,31 +249,32 @@ egs %>%
 ###################
 ####### Seasonal EGS
 ###################
-eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal_tst_2015/GWN_ptft_seasonal_egs.csv') %>%
+eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal/GWN_ptft_seasonal_egs.csv') %>%
   mutate(model = "GWN") %>%
-  bind_rows(read_csv('results/xai_outputs/egs_seasonal_tst_2015/RGCN_ptft_seasonal_egs.csv') %>%
+  bind_rows(read_csv('results/xai_outputs/egs_seasonal/RGCN_ptft_seasonal_egs.csv') %>%
               mutate(model='RGCN'))
 
 #########
 ## Test with 2015 non-averaged data
 #####
-eg_seasonal %>% filter(model == 'RGCN') %>%
-  group_by(model, seq_index, seg_id_nat) %>%
-  mutate(sequence_day = 1:n(),
-         month = month(max(date)),
-         season = ifelse(month %in% c(12,1,2), 'DJF',
-                         ifelse(month %in% c(3,4,5), 'MAM',
-                                ifelse(month %in% c(6,7,8), 'JJA', 'SON')))) %>%
-  ggplot(aes(x=sequence_day, y = seg_tave_air, group=seg_id_nat)) +
-  geom_line(alpha=.02) +
-  facet_wrap(~season, scales='free')
+# eg_seasonal %>% filter(model == 'RGCN') %>%
+#   group_by(model, seq_index, seg_id_nat) %>%
+#   mutate(sequence_day = 1:n(),
+#          month = month(max(date)),
+#          season = ifelse(month %in% c(12,1,2), 'DJF',
+#                          ifelse(month %in% c(3,4,5), 'MAM',
+#                                 ifelse(month %in% c(6,7,8), 'JJA', 'SON')))) %>%
+#   ggplot(aes(x=sequence_day, y = seg_tave_air, group=seg_id_nat)) +
+#   geom_line(alpha=.02) +
+#   facet_wrap(~season, scales='free')
+# 
+# eg_seasonal %>% group_by(model, seq_index, date) %>%
+#   summarise(across(seg_slope:seginc_potet, c(mean,sd)),
+#             month = max(month(date)))# %>%
+# ggplot(aes(x=date, y = seg_tave_air, group=seq_index)) +
+#   geom_line() +
+#   facet_grid(month~model, scales='free')
 ###################
-eg_seasonal %>% group_by(model, seq_index, date) %>%
-  summarise(across(seg_slope:seginc_potet, c(mean,sd)),
-            month = max(month(date)))# %>%
-  ggplot(aes(x=date, y = seg_tave_air, group=seq_index)) +
-  geom_line() +
-  facet_grid(month~model, scales='free')
 
 egs_seasonal_long <- eg_seasonal %>%
   select(-c(seg_slope:seg_width_mean)) %>%
@@ -330,8 +349,8 @@ p1 + annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','GWN'
                      data = data.frame(season=factor("SON", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
                      ymin = .01, ymax=.05, xmin=0, xmax=60)
 
+
 ggsave('../drb_gwnet/2_analysis/figures/seasonal_egs_w_insets.png', width=6, height=4, units = 'in')
   
 
 
-p2 <- 
