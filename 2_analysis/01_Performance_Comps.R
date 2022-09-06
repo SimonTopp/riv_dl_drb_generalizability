@@ -159,10 +159,10 @@ best_table(full_temps, 'GWN', 'Warmest 10%')
 best_table(full_temps, 'RGCN', 'Overall')
 best_table(full_temps, 'GWN', 'Overall')
 
-
 ########
 ### One for manuscript
 #######
+
 full_temps %>% filter(partition == 'tst',
                       run != 'Train Hot/Test Cold',
                       train_type=='Full Train') %>%

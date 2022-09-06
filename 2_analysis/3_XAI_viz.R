@@ -29,7 +29,7 @@ dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
 ############## Baseline comps figs
-baseline <- reach_noise %>% filter(run == 'ptft') %>%
+baseline <- reach_noise %>% filter(run == 'head_ptft') %>%
   inner_join(edges)
 
 baseline %>% group_by(model) %>%
@@ -125,26 +125,41 @@ seasonal_noise <- aggregate_xai('results/xai_outputs/noise_seasonal_shuffle/', '
   bind_rows(aggregate_xai('results/xai_outputs/noise_seasonal_shuffle/', 'RGCN_ptft')  %>%
               mutate(model = 'RGCN'))
 
-ggplot(seasonal_noise, aes(x=seq_num*3+2)) +
+ggplot(seasonal_noise, aes(x=seq_num)) +
   geom_line(aes(y = diffs_mean,color=model)) +
   geom_ribbon(aes(ymin=diffs_mean-diffs_sd, ymax=diffs_mean+diffs_sd,fill=model),alpha=.2) +
+  geom_hline(aes(yintercept=0), alpha = .4, color = 'black') +
+  scale_color_viridis_d(end = .6) + 
+  scale_fill_viridis_d(end = .6) +
+  theme_bw() +
   xlim(0,60)+
+  labs(x= "Unshuffled Days Leading to Prediction", y ='∆ Prediction (ºC)', color='Model', fill='Model') +
   facet_wrap(~season)
 
-
+ggsave('../drb_gwnet/2_analysis/figures/seasonal_shuffle.png', width=4, height=3, units='in')
 
 #########
 ###Reach EGS manuscript fig
 ########
-eg_files <- list.files('results/xai_outputs/egs_reach_anual_tst_2015/', full.names = T)
-egs <- map_dfr(eg_files, read_csv)
-
+eg_files <- list.files('results/xai_outputs/egs_reach_anual_tst/', full.names = T)
+egs <- map_dfr(eg_files, read_csv)  %>%
+  filter(run == 'ptft')
 
 eg_sums_non_target <- egs %>% group_by(model,run, target_reach) %>%
   filter(seg_id_nat != target_reach) %>%
   summarise(across(c(seg_slope:seginc_potet), sum)) %>%
   mutate(total_non_target = seg_slope+seg_elev+seg_width_mean+seg_tave_air+
                                 seginc_swrad+seg_rain+seginc_potet)
+
+egs %>% filter(seg_id_nat != target_reach) %>%
+  group_by(model,run, seg_id_nat,target_reach) %>%
+  summarise(across(c(seg_slope:seginc_potet), sum)) %>%
+  mutate(total_non_target = seg_slope+seg_elev+seg_width_mean+seg_tave_air+
+           seginc_swrad+seg_rain+seginc_potet) %>%
+  ggplot(aes(x=total_non_target, color = model)) +
+  geom_histogram() +
+  scale_y_log10()+
+  facet_wrap(~target_reach)
 
 eg_sums_non_target %>%
   ggplot(aes(x = factor(target_reach), y=total_non_target, color = model)) +
@@ -160,7 +175,7 @@ eg_sums_target <- egs %>%
                                   seginc_swrad+seg_rain+seginc_potet)
 
 eg_sums_target %>% group_by(model,run)  %>%
-  summarise(mean_non_target = median(total_target))
+  summarise(mean_target = median(total_target))
 
 
 target = 4189
@@ -249,9 +264,9 @@ egs %>%
 ###################
 ####### Seasonal EGS
 ###################
-eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal/GWN_ptft_seasonal_egs.csv') %>%
+eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal_tst/GWN_ptft_seasonal_egs.csv') %>%
   mutate(model = "GWN") %>%
-  bind_rows(read_csv('results/xai_outputs/egs_seasonal/RGCN_ptft_seasonal_egs.csv') %>%
+  bind_rows(read_csv('results/xai_outputs/egs_seasonal_tst/RGCN_ptft_seasonal_egs.csv') %>%
               mutate(model='RGCN'))
 
 #########
@@ -276,24 +291,75 @@ eg_seasonal <- read_csv('results/xai_outputs/egs_seasonal/GWN_ptft_seasonal_egs.
 #   facet_grid(month~model, scales='free')
 ###################
 
+########
+#### Seasonal for test set
+########
+rgcn_dates <- eg_seasonal %>% filter(model == 'RGCN') %>%
+  distinct(last_date) %>%
+  .$last_date
+
+eg_seasonal <- eg_seasonal %>% filter(last_date %in% rgcn_dates) %>%
+  mutate(month = lubridate::month(last_date),
+                       season= case_when(month %in% c(12,1,2)~'DJF',
+                                         month %in% c(3,4,5) ~ 'MAM',
+                                         month %in% c(6,7,8) ~ 'JJA',
+                                         month %in% c(9,10,11) ~ 'SON')) %>%
+  group_by(model, last_date, season) %>%
+  arrange(date) %>%
+  mutate(seq_num = row_number()) %>%
+  ungroup() %>%
+  select(-c(seg_slope:seg_width_mean)) %>%
+  pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
+  mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
+         Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
+                          labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation'))) 
+
+
+calc_cumsum <- function(df,seq_len, mod){
+  totals <- df %>% filter(model == mod) %>%
+    select(-seg_id_nat) %>%
+    group_by(season, last_date) %>%
+    summarise(total_eg = sum(abs(EG)))
+  cumsums <- map_dfr(c(1:seq_len), ~df %>% filter(model ==mod, seq_num<=.x) %>%
+            select(-seg_id_nat) %>%
+            group_by(season, last_date) %>%
+            summarise(cumsum = sum(abs(EG))) %>%
+            mutate(seq_num=.x)) %>%
+    left_join(totals) %>%
+    mutate(cumsum_prop = cumsum/total_eg)
+  return(cumsums)
+}
+
+gwn_cumsums <- calc_cumsum(eg_seasonal, 60, 'GWN')
+
+ggplot(gwn_cumsums, aes(x = seq_num,y=cumsum_prop, group=last_date)) + geom_line() +
+  facet_grid(~season)
+
+egs_seasonal_long <- eg_seasonal%>% group_by(model, season, seq_num, Feature) %>%
+  summarise(mean = mean(EG),
+            sd = sd(EG))
+
+
 egs_seasonal_long <- eg_seasonal %>%
   select(-c(seg_slope:seg_width_mean)) %>%
   pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
-  pivot_wider(names_from = metric, values_from = EG) %>%
+  #pivot_wider(names_from = metric, values_from = EG) %>%
   mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
          Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
                           labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation')))
 
-p1 <- eg_seasonal %>%
-  select(-c(seg_slope:seg_width_mean)) %>%
-  pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
-  pivot_wider(names_from = metric, values_from = EG) %>%
-  mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
-         Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
-                          labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation'))) %>%
+p1 <- egs_seasonal_long %>%
+  #select(-c(seg_slope:seg_width_mean)) %>%
+  #pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
+  #pivot_wider(names_from = metric, values_from = EG) %>%
+  #mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
+  #       Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
+  #                        labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation'))) %>%
   ggplot() +
   geom_line(aes(x=seq_num,y=mean,color=Feature)) +
+  geom_ribbon(aes(x=seq_num, ymax= mean+sd, ymin=mean-sd,fill=Feature),alpha=.2) +
   scale_color_viridis_d(option='plasma', end=.8) +
+  scale_fill_viridis_d(option='plasma',end=.8) +
   labs(x='Sequence Day', y = 'Mean Expected Gradient') +
   theme_bw() +
   facet_grid(season~model,scales='free')
@@ -326,28 +392,28 @@ annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax
 
 p1 + annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','GWN')), 
                      data = data.frame(season=factor("DJF", levels = c('DJF','MAM','JJA','SON')) ,model = 'GWN'),
-                     ymin = -.2, ymax=-.1, xmin=0, xmax=20) +
+                     ymin = -.3, ymax=-.1, xmin=0, xmax=20) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'JJA','GWN')), 
                      data = data.frame(season=factor("JJA", levels = c('DJF','MAM','JJA','SON')),model = 'GWN'),
-                     ymin = .025, ymax=.15, xmin=0, xmax=20) +
+                     ymin = .05, ymax=.2, xmin=0, xmax=20) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'MAM','GWN')), 
                      data = data.frame(season=factor("MAM", levels = c('DJF','MAM','JJA','SON')), model = 'GWN'),
-                     ymin = -.05, ymax=-.02, xmin=0, xmax=20) +
+                     ymin = -.2, ymax=-.05, xmin=0, xmax=20) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'SON','GWN')), 
                      data = data.frame(season=factor("SON", levels = c('DJF','MAM','JJA','SON')),model = 'GWN'),
-                     ymin = .01, ymax=.05, xmin=0, xmax=20) +
+                     ymin = .01, ymax=.15, xmin=0, xmax=20) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','RGCN')), 
                      data = data.frame(season=factor("DJF", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
-                     ymin = -.2, ymax=-.1, xmin=0, xmax=60) +
+                     ymin = -.3, ymax=-.1, xmin=0, xmax=60) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'JJA','RGCN')), 
                      data = data.frame(season=factor("JJA", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
-                     ymin = .025, ymax=.15, xmin=0, xmax=60) +
+                     ymin = .05, ymax=.2, xmin=0, xmax=60) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'MAM','RGCN')), 
                      data = data.frame(season=factor("MAM", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
-                     ymin = -.05, ymax=-.02, xmin=0, xmax=60) +
+                     ymin = -.2, ymax=-.05, xmin=0, xmax=60) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'SON','RGCN')), 
                      data = data.frame(season=factor("SON", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
-                     ymin = .01, ymax=.05, xmin=0, xmax=60)
+                     ymin = .01, ymax=.15, xmin=0, xmax=60)
 
 
 ggsave('../drb_gwnet/2_analysis/figures/seasonal_egs_w_insets.png', width=6, height=4, units = 'in')
