@@ -125,7 +125,7 @@ seasonal_noise <- aggregate_xai('results/xai_outputs/noise_seasonal_shuffle/', '
   bind_rows(aggregate_xai('results/xai_outputs/noise_seasonal_shuffle/', 'RGCN_ptft')  %>%
               mutate(model = 'RGCN'))
 
-ggplot(seasonal_noise, aes(x=seq_num)) +
+ggplot(seasonal_noise, aes(x=seq_num +2)) +
   geom_line(aes(y = diffs_mean,color=model)) +
   geom_ribbon(aes(ymin=diffs_mean-diffs_sd, ymax=diffs_mean+diffs_sd,fill=model),alpha=.2) +
   geom_hline(aes(yintercept=0), alpha = .4, color = 'black') +
@@ -138,6 +138,10 @@ ggplot(seasonal_noise, aes(x=seq_num)) +
 
 ggsave('../drb_gwnet/2_analysis/figures/seasonal_shuffle.png', width=4, height=3, units='in')
 
+seasonal_noise %>% 
+  filter(diffs_mean >.5) %>%
+  group_by(season, model) %>%
+  summarize(seq_day_thresh = max(seq_num)+2)
 #########
 ###Reach EGS manuscript fig
 ########
@@ -177,21 +181,6 @@ eg_sums_target <- egs %>%
 eg_sums_target %>% group_by(model,run)  %>%
   summarise(mean_target = median(total_target))
 
-
-target = 4189
-egs %>% filter(target_reach == target) %>%
-  mutate(total_attribution = seg_slope+seg_elev+seg_width_mean+seg_tave_air+
-           seginc_swrad+seg_rain+seginc_potet,
-         total_attribution = ifelse(target_reach==seg_id_nat,NA, total_attribution)) %>%
-  left_join(edges) %>%
-  ggplot(.) +
-  geom_sf(aes(color = total_attribution, geometry=geometry)) +
-  scale_color_viridis_c(na.value = 'red') +
-  facet_grid(model~run) +
-  ggthemes::theme_map() +
-  theme(legend.position = 'right',
-        legend.justification = 'center',
-        panel.background = element_rect(color='transparent',fill='black'))
 
 plot_reach <- function(reach, scenario='ptft',legend_label=' '){
   aoi <- edges %>% filter(seg_id_nat==reach) %>%
@@ -318,7 +307,7 @@ eg_seasonal <- eg_seasonal %>% filter(last_date %in% rgcn_dates) %>%
 calc_cumsum <- function(df,seq_len, mod){
   totals <- df %>% filter(model == mod) %>%
     select(-seg_id_nat) %>%
-    group_by(season, last_date) %>%
+    group_by(last_date, season) %>%
     summarise(total_eg = sum(abs(EG)))
   cumsums <- map_dfr(c(1:seq_len), ~df %>% filter(model ==mod, seq_num<=.x) %>%
             select(-seg_id_nat) %>%
@@ -326,44 +315,45 @@ calc_cumsum <- function(df,seq_len, mod){
             summarise(cumsum = sum(abs(EG))) %>%
             mutate(seq_num=.x)) %>%
     left_join(totals) %>%
-    mutate(cumsum_prop = cumsum/total_eg)
+    mutate(cumsum_prop = cumsum/total_eg,
+           model = mod)
   return(cumsums)
 }
 
-gwn_cumsums <- calc_cumsum(eg_seasonal, 60, 'GWN')
+cumsums <- calc_cumsum(eg_seasonal, 60, 'GWN') %>%
+  bind_rows(calc_cumsum(eg_seasonal,180,'RGCN'))
 
-ggplot(gwn_cumsums, aes(x = seq_num,y=cumsum_prop, group=last_date)) + geom_line() +
-  facet_grid(~season)
+cumsums %>% filter(cumsum_prop > .80) %>%
+  group_by(model, last_date) %>%
+  summarise(seq_day_exceedance = min(seq_num)) %>%
+  group_by(model) %>%
+  summarise(mean_day = mean(seq_day_exceedance),
+            sd_day = sd(seq_day_exceedance))
+
+p2 <- ggplot(cumsums, aes(x = seq_num,y=cumsum_prop, group=last_date)) + geom_line(alpha=.2) +
+  theme_bw() +
+  labs(x='Sequence Day',y = "Cumulative\nAttribution") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme(axis.title.x = element_blank()) +
+  facet_wrap(~model, ncol=2, scales = 'free_x') 
 
 egs_seasonal_long <- eg_seasonal%>% group_by(model, season, seq_num, Feature) %>%
   summarise(mean = mean(EG),
             sd = sd(EG))
 
-
-egs_seasonal_long <- eg_seasonal %>%
-  select(-c(seg_slope:seg_width_mean)) %>%
-  pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
-  #pivot_wider(names_from = metric, values_from = EG) %>%
-  mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
-         Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
-                          labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation')))
-
 p1 <- egs_seasonal_long %>%
-  #select(-c(seg_slope:seg_width_mean)) %>%
-  #pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
-  #pivot_wider(names_from = metric, values_from = EG) %>%
-  #mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
-  #       Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
-  #                        labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation'))) %>%
   ggplot() +
   geom_line(aes(x=seq_num,y=mean,color=Feature)) +
   geom_ribbon(aes(x=seq_num, ymax= mean+sd, ymin=mean-sd,fill=Feature),alpha=.2) +
   scale_color_viridis_d(option='plasma', end=.8) +
   scale_fill_viridis_d(option='plasma',end=.8) +
-  labs(x='Sequence Day', y = 'Mean Expected Gradient') +
+  labs(x='Sequence Day', y = 'Mean\nExpected Gradient') +
   theme_bw() +
+  theme(legend.position = 'bottom',
+        legend.title = element_blank()) +
+  #guides(color=guide_legend(nrow=2)) +
   facet_grid(season~model,scales='free')
-
+p1
 ## A function to plot the inset 
 ## This function allows us to specify which facet to annotate
 
@@ -390,7 +380,7 @@ annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax
                                           ymin = ymin, ymax = ymax))
 }
 
-p1 + annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','GWN')), 
+p1 <- p1 + annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','GWN')), 
                      data = data.frame(season=factor("DJF", levels = c('DJF','MAM','JJA','SON')) ,model = 'GWN'),
                      ymin = -.3, ymax=-.1, xmin=0, xmax=20) +
   annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'JJA','GWN')), 
@@ -416,7 +406,9 @@ p1 + annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','GWN'
                      ymin = .01, ymax=.15, xmin=0, xmax=60)
 
 
-ggsave('../drb_gwnet/2_analysis/figures/seasonal_egs_w_insets.png', width=6, height=4, units = 'in')
+g <- gridExtra::grid.arrange(p2,p1,ncol = 1, heights= c(.2,.8))
+
+ggsave('../drb_gwnet/2_analysis/figures/seasonal_egs_w_insets_cumulative.png',plot=g, width=6, height=6, units = 'in')
   
 
 
