@@ -72,7 +72,25 @@ g<-gridExtra::grid.arrange(p1,p2,nrow=2,heights=c(.25,.75))
 ggsave('../drb_gwnet/2_analysis/figures/annual_reach_noise_ptft_scaled_shuffle.png', 
        plot=g, width=4, height=5, units = 'in')
 
+sensitivity_ranks <- reach_noise %>%
+  group_by(model, run) %>%
+  arrange(desc(diffs)) %>%
+  mutate(rank = row_number())
 
+sensitivity_ranks %>% filter(seg_id_nat == 4205, run %in% c('pt','ptft')) ##Mouth reach
+
+res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds') %>%
+  mutate(dam = if_else(type_res %in% c('reservoir_inlet_reach', 'contains_reservoir',"within_reservoir", "downstream of reservoir (1)","reservoir_outlet_reach"), 'Dam','Not Dam'))
+
+res_sensitivity_change <- sensitivity_ranks %>% 
+  filter(run %in% c('pt','ptft')) %>%
+  left_join(res_info) %>%
+  group_by(model, run, dam) %>%
+  summarise(diff_mean = mean(diffs)) %>%
+  pivot_wider(names_from =run, values_from = diff_mean) %>%
+  mutate(change = (pt-ptft)/pt)
+
+###mouth seg diffs = GWN pt 9.78, pftf= 6.69,  RGCN pt 6.23 ptft 6.51
 ### Based on spatial join
 dam_inf <- baseline %>% st_as_sf(., sf_column_name = 'geometry')%>%
   st_join(dams %>% select(DAM_NAME, AREA_SKM) %>% st_buffer(500)) %>%
@@ -87,9 +105,6 @@ dam_inf <- baseline %>% st_as_sf(., sf_column_name = 'geometry')%>%
   mutate(diff_dams = (`Not Dam`-Dam)/`Not Dam`)
 
 ##### Based on Res Info
-res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds') %>%
-  mutate(dam = if_else(type_res %in% c('reservoir_inlet_reach', 'contains_reservoir',"within_reservoir", "downstream of reservoir (1)","reservoir_outlet_reach"), 'Dam','Not Dam'))
-
 dam_inf <- baseline %>%
   left_join(res_info %>% select(seg_id_nat, dam)) %>%
   #group_by(model) %>%
@@ -307,11 +322,11 @@ eg_seasonal <- eg_seasonal %>% filter(last_date %in% rgcn_dates) %>%
 calc_cumsum <- function(df,seq_len, mod){
   totals <- df %>% filter(model == mod) %>%
     select(-seg_id_nat) %>%
-    group_by(last_date, season) %>%
+    group_by(last_date) %>%
     summarise(total_eg = sum(abs(EG)))
   cumsums <- map_dfr(c(1:seq_len), ~df %>% filter(model ==mod, seq_num<=.x) %>%
             select(-seg_id_nat) %>%
-            group_by(season, last_date) %>%
+            group_by(Feature, last_date) %>%
             summarise(cumsum = sum(abs(EG))) %>%
             mutate(seq_num=.x)) %>%
     left_join(totals) %>%
@@ -324,9 +339,9 @@ cumsums <- calc_cumsum(eg_seasonal, 60, 'GWN') %>%
   bind_rows(calc_cumsum(eg_seasonal,180,'RGCN'))
 
 cumsums %>% filter(cumsum_prop > .80) %>%
-  group_by(model, last_date) %>%
+  group_by(model, Feature, last_date) %>%
   summarise(seq_day_exceedance = min(seq_num)) %>%
-  group_by(model) %>%
+  group_by(Feature, model) %>%
   summarise(mean_day = mean(seq_day_exceedance),
             sd_day = sd(seq_day_exceedance))
 
@@ -335,7 +350,8 @@ p2 <- ggplot(cumsums, aes(x = seq_num,y=cumsum_prop, group=last_date)) + geom_li
   labs(x='Sequence Day',y = "Cumulative\nAttribution") +
   scale_y_continuous(labels = scales::percent_format()) +
   theme(axis.title.x = element_blank()) +
-  facet_wrap(~model, ncol=2, scales = 'free_x') 
+  facet_grid(Feature~model, scales = 'free') 
+p2
 
 egs_seasonal_long <- eg_seasonal%>% group_by(model, season, seq_num, Feature) %>%
   summarise(mean = mean(EG),
