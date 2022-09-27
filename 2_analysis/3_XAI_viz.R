@@ -21,7 +21,7 @@ source('../drb_gwnet/2_Analysis/utils.R')
 spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
 edges <- spatial$edges %>% st_as_sf()
 llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv') %>%
-  mutate(test_group=ifelse(test_group=='Piedmont','Headwaters',test_group))
+  mutate(test_group=ifelse(test_group=='Piedmont','Plateau',test_group))
 
 reach_noise <- aggregate_xai('results/xai_outputs/noise_annual_shuffle', 'reach_noise')
 

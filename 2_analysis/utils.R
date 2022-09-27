@@ -222,7 +222,7 @@ combine_replicates = function(folder, pattern,subfolders = F){
                  ifelse(grepl('drought', dir),'Drought',
                  ifelse(grepl('appalachians', dir),'Appalachians',
                  ifelse(grepl('coastal', dir),'Coastal',
-                 ifelse(grepl('piedmont',dir),'Headwaters',
+                 ifelse(grepl('piedmont',dir),'Plateau',
                  'Unknown Scenario'))))))) #### Piedmont misslabled in pipeline, need to correct for plotting.
 
       if(i == 1){
@@ -418,7 +418,14 @@ replicate_comps <- function(run1,run2, scenario){
     broom::tidy() %>% mutate(group='Overall') %>%
     bind_rows(t.test(run_1$rmse_top10[run_1$partition=='tst'],run_2$rmse_top10[run_2$partition=='tst']) %>%
                 broom::tidy() %>% mutate(group='Warmest 10%')) %>%
-    mutate(scenario = scenario)
+    mutate(scenario = scenario, metric='rmse') %>%
+    bind_rows(
+      t.test(run_1$nse[run_1$partition=='tst'],run_2$nse[run_2$partition=='tst']) %>%
+      broom::tidy() %>% mutate(group='Overall') %>%
+      bind_rows(t.test(run_1$nse_top10[run_1$partition=='tst'],run_2$nse_top10[run_2$partition=='tst']) %>%
+                broom::tidy() %>% mutate(group='Warmest 10%')) %>%
+      mutate(scenario = scenario, metric='nse')
+    )
   return(sig_test)
 }
 
