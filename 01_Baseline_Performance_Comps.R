@@ -15,7 +15,7 @@ source('../drb_gwnet/2_Analysis/utils.R')
 
 ##### Bring in some spatial data
 spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
-edges <- spatial$edges %>% st_as_sf()
+network <- spatial$edges %>% st_as_sf()
 dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
@@ -49,7 +49,7 @@ p1 <- gwn_stats$segs %>% mutate(run = 'GWN') %>% bind_rows(rgcn_stats$segs %>% m
 p1
 
 ### Calculate Difference between baseline runs
-baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GWN',shape=edges)
+baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GWN',shape=network)
 
 p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
   labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +

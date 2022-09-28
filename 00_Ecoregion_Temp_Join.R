@@ -20,11 +20,11 @@ if(!dir.exists('data_DRB/DRB_spatial/EcoregionsIII')){
 
 ### Join to DRB
 ecoregs <- st_read('data_DRB/DRB_spatial/EcoregionsIII/us_eco_l3.shp')
-drb_segs <- readRDS('data_DRB/DRB_spatial/network.rds')$edges
+network <- readRDS('data_DRB/DRB_spatial/network.rds')$edges
 drb_bounds <- st_read('data_DRB/DRB_spatial/drbbnd/drb_bnd_polygon.shp') %>%
-  st_transform(crs = st_crs(drb_segs))
+  st_transform(crs = st_crs(network))
 
-seg_ecoregions <- drb_segs %>% st_join(ecoregs, largest = T)
+seg_ecoregions <- network %>% st_join(ecoregs, largest = T)
 
 ## Clip ecoregions to DRB
 ecoregs_clipped <- ecoregs %>% st_intersection(drb_bounds)
@@ -64,7 +64,7 @@ temp_sums %>%
 
 #### Bin ecoregions to have relatively equal number of obs
 ##*Note that "Piedmont" is refactored to "Plateau" later in analysis
-## but left here due to pipeline dependence on original label
+## but left here due to HPC pipeline dependence on original label
 temp_sums <- temp_sums %>% mutate(test_group =case_when(ecoreg %in% c('Northern Allegheny Plateau') ~ 'Piedmont',
                                                         ecoreg %in% c('North Central Appalachians', 'Ridge and Valley', 'Northern Appalachian and Atlantic Maritime Highlands') ~ 'Appalachians',
                                                         ecoreg %in% c('Northern Piedmont','Middle Atlantic Coastal Plain', 'Atlantic Coastal Pine Barrens','Southeastern Plains') ~'Coastal_Plains'))
@@ -79,7 +79,7 @@ write_csv(test_groups_out, 'data_DRB/DRB_spatial/llo_groups.csv')
 
 ### Plot up summary figure
 p1 <-ggplot(ecoregs_clipped %>% st_simplify(dTolerance = 500)) + geom_sf(aes(fill = US_L3NAME)) +
-  geom_sf(data = drb_segs, alpha=.3) +
+  geom_sf(data = network, alpha=.3) +
   labs(fill = 'Level III\nEcoregions\nwithin the DRB') +
   ggthemes::theme_map() +
   theme(legend.position = c(.8,.5))#theme_minimal()
@@ -93,7 +93,7 @@ p2<- temp_sums %>%
   geom_sf(aes(fill = factor(test_group,levels=c('Piedmont','Appalachians','Coastal_Plains'),
                             labels=c('Plateau','Appalachians','Coastal'))),color='transparent') +
   scale_fill_viridis_d(option='plasma', end =.8) +
-  geom_sf(data = drb_segs, alpha=.3) +
+  geom_sf(data = network, alpha=.3) +
   labs(fill = 'Hold-Out Groups') +
   ggthemes::theme_map() +
   theme(legend.position = c(.8,.5)) #theme_minimal()
@@ -112,7 +112,7 @@ p3 <- temp_obs %>%
 g <- gridExtra::grid.arrange(p1,p2,p3,nrow=1)
 ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.png',plot=g, width = 9, height=5, units = 'in', dpi=200)
 
-drb_segs %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n())) %>%
+network %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n())) %>%
   ggplot(aes(color = count)) +
   geom_sf() +
   scale_color_viridis_c(trans = 'log10')
@@ -120,7 +120,7 @@ drb_segs %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n
  #### Bland inset map
  ggplot(drb_bounds) +
    geom_sf(fill='black', alpha = .9) +
-   geom_sf(data = drb_segs,color='light blue') +
+   geom_sf(data = network,color='light blue') +
    ggthemes::theme_map()
  
  

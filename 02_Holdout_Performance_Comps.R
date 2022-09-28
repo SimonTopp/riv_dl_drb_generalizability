@@ -20,7 +20,7 @@ source('../drb_gwnet/2_Analysis/utils.R')
 ################
 
 spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
-edges <- spatial$edges %>% st_as_sf()
+network <- spatial$edges %>% st_as_sf()
 llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv') %>% mutate(test_group=ifelse(test_group=='Piedmont','Plateau',test_group))
 
 ################
@@ -158,30 +158,16 @@ full_temps %>% filter(partition == 'tst',
 ###########
 #### Plot up overall Performance and Change in Performance from Baseline
 ############
-plot_overall <- function(runs, grp = 'Overall', metric='rmse', part='tst', title = ''){
-  full_temps %>% filter(partition == part) %>%
-    reshape_metric(.,metric,c('partition','run','model','train_type')) %>%
-    filter(group == grp,
-           run %in% runs) %>%
-    mutate(sd = sd/sqrt(10)) %>%
-    ggplot(.,aes(x = train_type, y = mean, color = model)) +
-    geom_point(position= position_dodge(width=1)) +
-    geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),position= position_dodge(width=1),width = .2) +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle=45,vjust=1,hjust=1))+
-    labs(title=title, y = metric) +
-    facet_wrap(~run,nrow=1)
-}
 
 ## Overalll
-p1 <- plot_overall(c('Baseline','Drought','Warming','Train Hot/Test Cold'), title = 'Overall Performance (RMSE)')
-p2 <- plot_overall(c('Plateau','Appalachians','Coastal'), title = 'Overall Performance (RMSE)') + facet_wrap(~run, scales = 'free')
+p1 <- plot_overall(full_temps, c('Baseline','Drought','Warming','Train Hot/Test Cold'), title = 'Overall Performance (RMSE)')
+p2 <- plot_overall(full_temps,c('Plateau','Appalachians','Coastal'), title = 'Overall Performance (RMSE)') + facet_wrap(~run, scales = 'free')
 g <- ggarrange(p1, p2, nrow=2,common.legend = T,vjust=0,hjust=-1)
 g
 
 ## Warmest
-p1 <- plot_overall(c('Baseline','Drought','Warming','Train Hot/Test Cold'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)')
-p2 <- plot_overall(c('Plateau','Appalachians','Coastal'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)') + 
+p1 <- plot_overall(full_temps, c('Baseline','Drought','Warming','Train Hot/Test Cold'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)')
+p2 <- plot_overall(full_temps, c('Plateau','Appalachians','Coastal'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)') + 
   facet_wrap(~run, scales = 'free')
 g <- ggarrange(p1, p2, nrow=2,common.legend = T,vjust=0,hjust=-1)
 g
@@ -354,7 +340,7 @@ reshape_metric(full_segs, 'rmse',c('partition','run','model','train_type','seg_i
   mutate(performance_change = ifelse(performance_change > 3,3,
                                      ifelse(performance_change < -3,-3,
                                             performance_change))) %>%
-  left_join(edges) %>%
+  left_join(network) %>%
   st_as_sf()%>%
   ggplot(., aes(color=performance_change)) +
   scale_color_gradient2(na.value = 'transparent') +
@@ -380,7 +366,7 @@ reach_obs_counts <- llo_groups %>%
 temp_obs %>%
   group_by(seg_id_nat) %>%
   summarise(count = n()) %>%
-  right_join(edges) %>%
+  right_join(network) %>%
   ggplot(.) +
   geom_sf(aes(color=count, geometry=geometry)) +
   scale_color_viridis_c(trans='log10')

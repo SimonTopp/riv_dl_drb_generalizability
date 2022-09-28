@@ -17,9 +17,9 @@ source('../drb_gwnet/2_Analysis/utils.R')
 ################
 
 spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
-edges <- spatial$edges %>% st_as_sf()
+network <- spatial$edges %>% st_as_sf()
 drb_bounds <- st_read('data_DRB/DRB_spatial/drbbnd/drb_bnd_polygon.shp') %>%
-  st_transform(crs = st_crs(edges))
+  st_transform(crs = st_crs(network))
 llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv') %>%
   mutate(test_group=ifelse(test_group=='Piedmont','Plateau',test_group))
 
@@ -32,7 +32,7 @@ dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
 #### Spatial Permutation Experiments
 #########
 baseline <- reach_noise %>% filter(run == 'ptft') %>%
-  inner_join(edges)
+  inner_join(network)
 
 baseline %>% group_by(model) %>%
     summarise(median = median(diffs))
@@ -45,10 +45,6 @@ p1 <- ggplot(baseline, aes(x = diffs)) +
        fill = 'Model') +
   theme_minimal()
 
-##Min/max scaling function
-normalize <- function(x, na.rm = TRUE) {
-  return((x- min(x)) /(max(x)-min(x)))
-}
 
 p2 <- baseline %>%
   group_by(model) %>%
@@ -172,8 +168,8 @@ eg_sums_target %>% group_by(model,run)  %>%
 
 
 ##### Plot up the spatial distribution of attribution for each of our reaches of interest
-plot_reach <- function(reach, scenario='ptft',legend_label=' '){
-  aoi <- edges %>% filter(seg_id_nat==reach) %>%
+plot_eg_reach <- function(reach, network,  scenario='ptft',legend_label=' '){
+  aoi <- network %>% filter(seg_id_nat==reach) %>%
     st_centroid() %>%
     st_buffer(100000)
   
@@ -182,7 +178,7 @@ plot_reach <- function(reach, scenario='ptft',legend_label=' '){
              seginc_swrad+seg_rain+seginc_potet,
            total_attribution = ifelse(target_reach==seg_id_nat,NA, total_attribution),
            total_attribution = ifelse(total_attribution>.01,.01,total_attribution)) %>%
-    left_join(edges)%>%
+    left_join(network)%>%
     st_as_sf()%>%
     ggplot(.) +
     geom_sf(aes(color = total_attribution, geometry=geometry)) +
@@ -195,19 +191,19 @@ plot_reach <- function(reach, scenario='ptft',legend_label=' '){
 }
 
 
-p1 <- plot_reach(1577,scenario='ptft',legend_label='Percent Attribution') +labs(subtitle = 'A')
-p2 <- plot_reach(1487,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'B')
-p3 <- plot_reach(2318,scenario='ptft',legend_label='Percent Attribution')
-p4<- plot_reach(4189,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'C')
+p1 <- plot_eg_reach(1577,scenario='ptft',legend_label='Percent Attribution') +labs(subtitle = 'A')
+p2 <- plot_eg_reach(1487,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'B')
+p3 <- plot_eg_reach(2318,scenario='ptft',legend_label='Percent Attribution')
+p4<- plot_eg_reach(4189,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'C')
 
-target_reaches <- edges %>%
+target_reaches <- network %>%
   filter(seg_id_nat %in% c(1577,1487,4189)) %>%
   st_centroid() %>%
   mutate(labs=c('B','A','C'))
 
 p_summary <- ggplot(drb_bounds) +
   geom_sf(fill='white', alpha = .9) +
-  geom_sf(data = edges,color='light blue', alpha=.6) +
+  geom_sf(data = network,color='light blue', alpha=.6) +
   geom_sf_text(data=target_reaches,aes(label=labs), size=4, color='red')+
   ggthemes::theme_map()
 
