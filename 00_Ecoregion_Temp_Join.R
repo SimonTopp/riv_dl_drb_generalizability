@@ -7,9 +7,7 @@ library(sf)
 
 ### Change Working Directory to River-dl
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-setwd('../../river-dl')
-source('../drb_gwnet/2_Analysis/utils.R')
-
+setwd('../river-dl')
 
 ### Download Ecoregions if necessary
 if(!dir.exists('data_DRB/DRB_spatial/EcoregionsIII')){
@@ -110,6 +108,7 @@ p3 <- temp_obs %>%
   theme(legend.position = c(0.8,.5))
  
 g <- gridExtra::grid.arrange(p1,p2,p3,nrow=1)
+
 ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.png',plot=g, width = 9, height=5, units = 'in', dpi=200)
 
 network %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n())) %>%
@@ -122,6 +121,3 @@ network %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n(
    geom_sf(fill='black', alpha = .9) +
    geom_sf(data = network,color='light blue') +
    ggthemes::theme_map()
- 
- 
-

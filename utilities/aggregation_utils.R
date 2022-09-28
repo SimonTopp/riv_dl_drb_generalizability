@@ -67,17 +67,17 @@ read_replicates = function(folder, pattern,subfolders = F){
     for(i in c(1:length(files))){
       run = str_split(files[i], pattern = '/')[[1]] %>% tail(3) %>% .[1]
       if(i == 1){
-        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, run = run)
+        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i-1, run = run)
       }
-      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i, run = run))
+      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i-1, run = run))
       }
     }
   }else{
     for(i in c(1:length(files))){
       if(i == 1){
-        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i)
+        df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i-1)
       }
-      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i))
+      else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i-1))
       }
     }
   }

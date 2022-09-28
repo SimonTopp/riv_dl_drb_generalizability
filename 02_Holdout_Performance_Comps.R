@@ -9,22 +9,22 @@ library(ggpubr)
 library(knitr)
 library(kableExtra)
 
-
 ### Change Working Directory to River-dl
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-setwd('../../river-dl')
-source('../drb_gwnet/2_Analysis/utils.R')
+setwd('../river-dl')
+source('../drb_gwnet/utilities/aggregation_utils.R')
+source('../drb_gwnet/utilities/analysis_utils.R')
+source('../drb_gwnet/utilities/plotting_utils.R')
 
 ################
 ##Bring in some spatial data
 ################
+network <- readRDS('data_DRB/DRB_spatial/network.rds')$edges %>% st_as_sf
 
-spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
-network <- spatial$edges %>% st_as_sf()
 llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv') %>% mutate(test_group=ifelse(test_group=='Piedmont','Plateau',test_group))
 
 ################
-##### Pull Results from various model Runs
+##### Pull Results from various model Runs and compare scenarios for significant differences
 ################
 
 ### Overall Performance
@@ -32,9 +32,8 @@ full_temps <- combine_replicates('results', 'overall_metrics', subfolders = T) %
   filter(train_type != 'pre_train_only') %>%
   mutate(run = factor(run, levels=c('Baseline', 'Drought','Warming','Train Hot/Test Cold',
                                     'Plateau','Appalachians','Coastal')))
-###########
+
 ##### Compare significance between models across replicate runs
-###########
 replicate_sigs <- replicate_comps('results/baseline/GWN/full_train','results/baseline/RGCN/full_train', 'Baseline') %>%
   bind_rows(replicate_comps('results/LLO/coastal/GWN/full_train','results/LLO/coastal/RGCN/full_train', 'Coastal')) %>%
   bind_rows(replicate_comps('results/LLO/appalachians/GWN/full_train','results/LLO/appalachians/RGCN/full_train', 'Appalachians')) %>%
@@ -64,9 +63,7 @@ warmest_sigs <- replicate_sigs %>% filter(group == 'Warmest 10%') %>%
   mutate(scenario = factor(scenario, levels=c('Baseline', 'Drought','Warming','Train Hot/Test Cold',
                                     'Plateau','Appalachians','Coastal')))
 
-##########
 ### Significant differences between baseline and hold-out runs
-#########
 gwn_scenario_sigs <- replicate_comps('results/baseline/GWN/full_train','results/LLO/coastal/GWN/full_train', 'Coastal') %>%
   bind_rows(replicate_comps('results/baseline/GWN/full_train','results/LLO/appalachians/GWN/full_train', 'Appalachians')) %>%
   bind_rows(replicate_comps('results/baseline/GWN/full_train','results/LLO/piedmont/GWN/full_train', 'Plateau')) %>%
@@ -81,9 +78,8 @@ rgcn_scenario_sigs <- replicate_comps('results/baseline/RGCN/full_train','result
   bind_rows(replicate_comps('results/baseline/RGCN/full_train','results/LTO/min/RGCN/full_train', 'Train Hot/Test Cold')) %>%
   bind_rows(replicate_comps('results/baseline/RGCN/full_train','results/Drought/RGCN/full_train', 'Drought'))
 
-###############
-### Manuscript Table 1 Performance Comparison (RMSE)
-##############
+
+#### Manuscript Table 1 Performance Comparison (RMSE)
 
 full_temps %>% filter(partition == 'tst',
                       run != 'Train Hot/Test Cold',
@@ -104,7 +100,6 @@ full_temps %>% filter(partition == 'tst',
               names_sep = '-') %>%
   rename(Scenario = run) %>% 
   relocate(`GWN-Warmest 10%`,.after = `RGCN-Overall`) %>%
-  #mutate(across(c(2,3), ~round(.,2))) %>%
   arrange(Scenario) %>%
   kable() %>%
   kable_paper() %>%
@@ -116,9 +111,7 @@ full_temps %>% filter(partition == 'tst',
   pack_rows('Geographic Shift',4,6) %>%
   add_header_above(c(" ", "RMSE (ºC); mean (SE)" = 4))
 
-###############
 ### Manuscript Table S1 Performance Comparison (NSE)
-##############
 
 full_temps %>% filter(partition == 'tst',
                       run != 'Train Hot/Test Cold',
@@ -155,29 +148,9 @@ full_temps %>% filter(partition == 'tst',
 
 
 
-###########
-#### Plot up overall Performance and Change in Performance from Baseline
 ############
-
-## Overalll
-p1 <- plot_overall(full_temps, c('Baseline','Drought','Warming','Train Hot/Test Cold'), title = 'Overall Performance (RMSE)')
-p2 <- plot_overall(full_temps,c('Plateau','Appalachians','Coastal'), title = 'Overall Performance (RMSE)') + facet_wrap(~run, scales = 'free')
-g <- ggarrange(p1, p2, nrow=2,common.legend = T,vjust=0,hjust=-1)
-g
-
-## Warmest
-p1 <- plot_overall(full_temps, c('Baseline','Drought','Warming','Train Hot/Test Cold'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)')
-p2 <- plot_overall(full_temps, c('Plateau','Appalachians','Coastal'), grp='Warmest 10%', title = 'Warmest 10%, Performance (RMSE)') + 
-  facet_wrap(~run, scales = 'free')
-g <- ggarrange(p1, p2, nrow=2,common.legend = T,vjust=0,hjust=-1)
-g
-
-
-###############
-############
-## Look at change in performance but between all possible combinations
+## Look at change in performance from baseline between all possible combinations of runs
 ## of replicate runs
-############
 ############
 files_gwn <- c('results/Drought/GWN/full_train/', 'results/LTO/max/GWN/full_train/', 'results/LLO/appalachians/GWN/full_train/',
            'results/LLO/coastal/GWN/full_train/','results/LLO/piedmont/GWN/full_train/')
@@ -255,9 +228,7 @@ full_segs <- combine_replicates('results','reach_metrics',subfolders=T) %>%
   mutate(run = factor(run, levels=c('Baseline', 'Drought','Warming','Train Hot/Test Cold',
                                     'Plateau','Appalachians','Coastal')))
 
-################
 #### Plot up Binned Segment Results
-###############
 sigs_segments_overall <- reshape_metric(full_segs[full_segs$partition=='tst',], 'rmse',c('partition','run','model','seg_id_nat','train_type')) %>%
   ungroup() %>%
   select(-sd)%>%
@@ -276,9 +247,7 @@ sigs_segments_overall <- reshape_metric(full_segs[full_segs$partition=='tst',], 
   filter(train_type =='Full Train',
          group!='Coldest 10%')
 
-#################  
 ##### Plot up distribution of performance across reaches
-#################
 
 min <- reshape_metric(full_segs[full_segs$partition=='tst',], 'rmse',c('partition','run','model','seg_id_nat','train_type')) %>%
   filter(group=='Overall',
@@ -346,27 +315,3 @@ reshape_metric(full_segs, 'rmse',c('partition','run','model','train_type','seg_i
   scale_color_gradient2(na.value = 'transparent') +
   geom_sf() +
   facet_grid(model~run)
-
-#######Spatial Description of observations
-temp_obs <- read_csv('data_DRB/temperature_observations_drb.csv') %>%
-  filter(date > '1980-01-01')
-
-###Take a look at how performance varies with reach type
-res_info <- readRDS('data_DRB/DRB_spatial/segments_relative_to_reservoirs.rds') %>%
-  mutate(res_group = if_else(type_res %in% c('contains_reservoir','reservoir_inlet_reach', "within_reservoir", "downstream of reservoir (1)","downstream of reservoir (2)","reservoir_outlet_reach"), 'Impacted','Not Impacted'))
-
-reach_obs_counts <- llo_groups %>% 
-  left_join(res_info) %>% 
-  left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(n_obs = sum(!is.na(mean_temp_c)))) %>%
-  group_by(test_group, res_group) %>% summarize(count = n(), n_obs = sum(n_obs,na.rm = T)) %>%
-  filter(!is.na(res_group)) %>% pivot_wider(names_from='res_group',values_from=c('count','n_obs')) %>%
-  mutate(prop_reach = count_Impacted/(count_Impacted + `count_Not Impacted`),
-         prop_obs = n_obs_Impacted/(n_obs_Impacted + `n_obs_Not Impacted`))
-
-temp_obs %>%
-  group_by(seg_id_nat) %>%
-  summarise(count = n()) %>%
-  right_join(network) %>%
-  ggplot(.) +
-  geom_sf(aes(color=count, geometry=geometry)) +
-  scale_color_viridis_c(trans='log10')

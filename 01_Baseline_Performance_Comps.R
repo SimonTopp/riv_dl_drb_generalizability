@@ -9,13 +9,14 @@ library(kableExtra)
 
 ### Change Working Directory to River-dl
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-setwd('../../river-dl')
-source('../drb_gwnet/2_Analysis/utils.R')
+setwd('../river-dl')
+source('../drb_gwnet/utilities/aggregation_utils.R')
+source('../drb_gwnet/utilities/analysis_utils.R')
+source('../drb_gwnet/utilities/plotting_utils.R')
 
 
 ##### Bring in some spatial data
-spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
-network <- spatial$edges %>% st_as_sf()
+network <- readRDS('data_DRB/DRB_spatial/network.rds')$edges %>% st_as_sf
 dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
@@ -30,10 +31,12 @@ rgcn_stats <- metrics %>% map(~combine_replicates('results/baseline/RGCN',.,subf
 names(rgcn_stats) <- c('temps','months','segs')
 
 ### Look at individual replicates
-gwn_reps <- read_replicates('results/baseline/GWN/full_train', 'overall_metrics') %>% 
-  filter(partition=='tst')## Best, 6
-rgcn_reps <- read_replicates('results/baseline/RGCN/full_train', 'overall_metrics') %>%
-  filter(partition=='tst')## Best, 2
+read_replicates('results/baseline/GWN/full_train', 'overall_metrics') %>% 
+  filter(partition=='tst') %>%
+  filter(rmse==min(rmse)) ## Best, 6
+read_replicates('results/baseline/RGCN/full_train', 'overall_metrics') %>%
+  filter(partition=='tst') %>%
+  filter(rmse==min(rmse))## Best, 2
 
 ##########
 ### Summary baseline comparison figure
@@ -49,7 +52,7 @@ p1 <- gwn_stats$segs %>% mutate(run = 'GWN') %>% bind_rows(rgcn_stats$segs %>% m
 p1
 
 ### Calculate Difference between baseline runs
-baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GWN',shape=network)
+baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GWN', shape=network)
 
 p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
   labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +
@@ -81,7 +84,6 @@ g <- gridExtra::grid.arrange(p1,p2,p3, layout_matrix = layout)
 ggsave('../drb_gwnet/2_analysis/figures/baseline_comps.png', plot = g, width = 5, height = 5, units = 'in')
 
 
-
 ############
 #### Look at how performance varies across reservoir and non-reservoir sites
 ###########
@@ -93,6 +95,7 @@ res_metrics <- baseline_diff %>% left_join(res_info) %>%
   summarise(RGCN = median(RGCN, na.rm=T),
             GraphWaveNet = median(GWN, na.rm=T),
             count = n())
+
 res_metrics %>% filter(metric=='rmse_mean')
 res_metrics %>% filter(metric=='nse_mean')
 

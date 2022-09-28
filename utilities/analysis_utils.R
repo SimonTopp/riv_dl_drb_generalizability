@@ -4,11 +4,11 @@ seg_error_diff <- function(log1,log2,name1, name2, part = 'tst', run_type = 'Ful
   full_log <- log1 %>% filter(partition == part, train_type==run_type) %>% 
     select(-contains('sd'),-train_type) %>% 
     pivot_longer(cols=contains('mean'), names_to='metric') %>% 
-    full_join(edges %>% st_set_geometry(NULL) %>% select(seg_id_nat)) %>% mutate(comp = name1) %>%
+    full_join(shape %>% st_set_geometry(NULL) %>% select(seg_id_nat)) %>% mutate(comp = name1) %>%
     bind_rows(log2 %>% filter(partition == part, train_type==run_type) %>% 
                 select(-contains('sd'),-train_type) %>% 
                 pivot_longer(cols=contains('mean'), names_to='metric') %>% 
-                full_join(edges %>% st_set_geometry(NULL) %>% select(seg_id_nat)) %>% mutate(comp = name2)) %>%
+                full_join(shape %>% st_set_geometry(NULL) %>% select(seg_id_nat)) %>% mutate(comp = name2)) %>%
     select(comp,run,seg_id_nat, value,metric,partition)
   
   
@@ -98,4 +98,21 @@ compare_replicate_pairs <- function(baseline, scenario, scenario_label, metric='
                   sd =sd(all_combos$diff), 
                   run=scenario_label)
   return(diffs)
+}
+
+
+calc_cumulative_sum <- function(df,seq_len, mod,group_features){
+  totals <- df %>% filter(model == mod) %>%
+    select(-seg_id_nat) %>%
+    group_by(last_date) %>%
+    summarise(total_eg = sum(abs(EG)))
+  cumsums <- map_dfr(c(1:seq_len), ~df %>% filter(model ==mod, seq_num<=.x) %>%
+                       select(-seg_id_nat) %>%
+                       group_by(across(all_of(group_features))) %>%
+                       summarise(cumsum = sum(abs(EG))) %>%
+                       mutate(seq_num=.x)) %>%
+    left_join(totals) %>%
+    mutate(cumsum_prop = cumsum/total_eg,
+           model = mod)
+  return(cumsums)
 }

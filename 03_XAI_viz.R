@@ -9,28 +9,34 @@ library(kableExtra)
 library(patchwork)
 
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-setwd('../../river-dl')
-source('../drb_gwnet/2_Analysis/utils.R')
+setwd('../river-dl')
+source('../drb_gwnet/utilities/aggregation_utils.R')
+source('../drb_gwnet/utilities/analysis_utils.R')
+source('../drb_gwnet/utilities/plotting_utils.R')
+
 
 ################
 ##Bring in some spatial data
 ################
 
-spatial <- readRDS('data_DRB/DRB_spatial/network.rds')
-network <- spatial$edges %>% st_as_sf()
+network <- readRDS('data_DRB/DRB_spatial/network.rds')$edges %>% st_as_sf
+
 drb_bounds <- st_read('data_DRB/DRB_spatial/drbbnd/drb_bnd_polygon.shp') %>%
   st_transform(crs = st_crs(network))
-llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv') %>%
-  mutate(test_group=ifelse(test_group=='Piedmont','Plateau',test_group))
-
-reach_noise <- aggregate_xai('results/xai_outputs/noise_annual_shuffle', 'reach_noise')
 
 dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
+llo_groups <- read_csv('data_DRB/DRB_spatial/llo_groups.csv') %>%
+  mutate(test_group=ifelse(test_group=='Piedmont','Plateau',test_group))
+
+
 ##########
 #### Spatial Permutation Experiments
 #########
+
+reach_noise <- aggregate_xai('results/xai_outputs/noise_annual_shuffle', 'reach_noise')
+
 baseline <- reach_noise %>% filter(run == 'ptft') %>%
   inner_join(network)
 
@@ -168,33 +174,10 @@ eg_sums_target %>% group_by(model,run)  %>%
 
 
 ##### Plot up the spatial distribution of attribution for each of our reaches of interest
-plot_eg_reach <- function(reach, network,  scenario='ptft',legend_label=' '){
-  aoi <- network %>% filter(seg_id_nat==reach) %>%
-    st_centroid() %>%
-    st_buffer(100000)
-  
-  egs %>% filter(run==scenario, target_reach==reach) %>%
-    mutate(total_attribution = seg_slope+seg_elev+seg_width_mean+seg_tave_air+
-             seginc_swrad+seg_rain+seginc_potet,
-           total_attribution = ifelse(target_reach==seg_id_nat,NA, total_attribution),
-           total_attribution = ifelse(total_attribution>.01,.01,total_attribution)) %>%
-    left_join(network)%>%
-    st_as_sf()%>%
-    ggplot(.) +
-    geom_sf(aes(color = total_attribution, geometry=geometry)) +
-    scale_color_viridis_c(na.value = 'red',begin=.1, limits=c(0,.01), 
-                          labels = c('0.00%','0.25%','0.5%','0.75%','>1.00%'))+#,labels=scales::percent) +
-    labs(color=legend_label) +
-    facet_wrap(~model,nrow=1) +
-    ggthemes::theme_map() +
-    theme(panel.background = element_rect(color='transparent',fill='black'))
-}
-
-
-p1 <- plot_eg_reach(1577,scenario='ptft',legend_label='Percent Attribution') +labs(subtitle = 'A')
-p2 <- plot_eg_reach(1487,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'B')
-p3 <- plot_eg_reach(2318,scenario='ptft',legend_label='Percent Attribution')
-p4<- plot_eg_reach(4189,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'C')
+p1 <- plot_eg_reach(1577,network, scenario='ptft',legend_label='Percent Attribution') +labs(subtitle = 'A')
+p2 <- plot_eg_reach(1487,network,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'B')
+p3 <- plot_eg_reach(2318,network,scenario='ptft',legend_label='Percent Attribution')
+p4<- plot_eg_reach(4189,network,scenario='ptft',legend_label='Percent Attribution')+labs(subtitle = 'C')
 
 target_reaches <- network %>%
   filter(seg_id_nat %in% c(1577,1487,4189)) %>%
@@ -250,25 +233,10 @@ eg_seasonal <- eg_seasonal %>% filter(last_date %in% rgcn_dates) %>%
 
 
 ####### Look at cumulative attribution over time for each sequence
-calc_cumsum <- function(df,seq_len, mod,group_features){
-  totals <- df %>% filter(model == mod) %>%
-    select(-seg_id_nat) %>%
-    group_by(last_date) %>%
-    summarise(total_eg = sum(abs(EG)))
-  cumsums <- map_dfr(c(1:seq_len), ~df %>% filter(model ==mod, seq_num<=.x) %>%
-            select(-seg_id_nat) %>%
-            group_by(across(all_of(group_features))) %>%
-            summarise(cumsum = sum(abs(EG))) %>%
-            mutate(seq_num=.x)) %>%
-    left_join(totals) %>%
-    mutate(cumsum_prop = cumsum/total_eg,
-           model = mod)
-  return(cumsums)
-}
 
 ### Cumulative Attribution by Feature
-cumsums <- calc_cumsum(eg_seasonal, 60, 'GWN', c("Feature","last_date")) %>%
-  bind_rows(calc_cumsum(eg_seasonal,180,'RGCN', c("Feature","last_date")))
+cumsums <- calc_cumumalitive_sum(eg_seasonal, 60, 'GWN', c("Feature","last_date")) %>%
+  bind_rows(calc_cumumalitive_sum(eg_seasonal,180,'RGCN', c("Feature","last_date")))
 
 ggplot(cumsums, aes(x = seq_num,y=cumsum_prop, group=last_date)) + geom_line(alpha=.2) +
   theme_bw() +
@@ -330,52 +298,29 @@ p1 <- egs_seasonal_long %>%
 
 p1
 
-## A function to plot the inset 
-get_inset <- function(df, seas, mod){
-  p <- ggplot(data=df %>%
-                filter(season == seas, model == mod) %>%
-                group_by(season, model, Feature) %>%
-                summarise(total_eg = sum(abs(mean))),
-              aes(x = Feature, y = total_eg, fill=Feature)) +
-    geom_col() +
-    scale_fill_viridis_d(option='plasma', end=.8) +
-    theme_void() +
-    theme(legend.position = 'none')
-  return(p)
-}
 
-## This function allows us to specify which facet to annotate
-annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, data){
-  layer(data = data, stat = StatIdentity, position = PositionIdentity, 
-        geom = ggplot2:::GeomCustomAnn,
-        inherit.aes = TRUE, params = list(grob = grob,
-                                          #x=-Inf, y=Inf, label = "Top-left", hjust = 0, vjust = 1))
-                                          xmin = xmin, xmax = xmax, 
-                                          ymin = ymin, ymax = ymax))
-}
-
-p1 <- p1 + annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','GWN')), 
+p1 <- p1 + annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'DJF','GWN')), 
                      data = data.frame(season=factor("DJF", levels = c('DJF','MAM','JJA','SON')) ,model = 'GWN'),
                      ymin = -.3, ymax=-.1, xmin=0, xmax=20) +
-  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'JJA','GWN')), 
+  annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'JJA','GWN')), 
                      data = data.frame(season=factor("JJA", levels = c('DJF','MAM','JJA','SON')),model = 'GWN'),
                      ymin = .05, ymax=.2, xmin=0, xmax=20) +
-  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'MAM','GWN')), 
+  annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'MAM','GWN')), 
                      data = data.frame(season=factor("MAM", levels = c('DJF','MAM','JJA','SON')), model = 'GWN'),
                      ymin = -.2, ymax=-.05, xmin=0, xmax=20) +
-  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'SON','GWN')), 
+  annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'SON','GWN')), 
                      data = data.frame(season=factor("SON", levels = c('DJF','MAM','JJA','SON')),model = 'GWN'),
                      ymin = .01, ymax=.15, xmin=0, xmax=20) +
-  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'DJF','RGCN')), 
+  annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'DJF','RGCN')), 
                      data = data.frame(season=factor("DJF", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
                      ymin = -.3, ymax=-.1, xmin=0, xmax=60) +
-  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'JJA','RGCN')), 
+  annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'JJA','RGCN')), 
                      data = data.frame(season=factor("JJA", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
                      ymin = .05, ymax=.2, xmin=0, xmax=60) +
-  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'MAM','RGCN')), 
+  annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'MAM','RGCN')), 
                      data = data.frame(season=factor("MAM", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
                      ymin = -.2, ymax=-.05, xmin=0, xmax=60) +
-  annotation_custom2(grob=ggplotGrob(get_inset(egs_seasonal_long, 'SON','RGCN')), 
+  annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'SON','RGCN')), 
                      data = data.frame(season=factor("SON", levels = c('DJF','MAM','JJA','SON')),model = 'RGCN'),
                      ymin = .01, ymax=.15, xmin=0, xmax=60)
 

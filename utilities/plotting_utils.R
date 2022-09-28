@@ -54,3 +54,52 @@ plot_overall <- function(df, runs, grp = 'Overall', metric='rmse', part='tst', t
     labs(title=title, y = metric) +
     facet_wrap(~run,nrow=1)
 }
+
+
+##### Plot up the spatial distribution of attribution for each of our reaches of interest
+plot_eg_reach <- function(reach, network,  scenario='ptft',legend_label=' '){
+  aoi <- network %>% filter(seg_id_nat==reach) %>%
+    st_centroid() %>%
+    st_buffer(100000)
+  
+  egs %>% filter(run==scenario, target_reach==reach) %>%
+    mutate(total_attribution = seg_slope+seg_elev+seg_width_mean+seg_tave_air+
+             seginc_swrad+seg_rain+seginc_potet,
+           total_attribution = ifelse(target_reach==seg_id_nat,NA, total_attribution),
+           total_attribution = ifelse(total_attribution>.01,.01,total_attribution)) %>%
+    left_join(network)%>%
+    st_as_sf()%>%
+    ggplot(.) +
+    geom_sf(aes(color = total_attribution, geometry=geometry)) +
+    scale_color_viridis_c(na.value = 'red',begin=.1, limits=c(0,.01), 
+                          labels = c('0.00%','0.25%','0.5%','0.75%','>1.00%'))+#,labels=scales::percent) +
+    labs(color=legend_label) +
+    facet_wrap(~model,nrow=1) +
+    ggthemes::theme_map() +
+    theme(panel.background = element_rect(color='transparent',fill='black'))
+}
+
+
+## A function to plot the inset 
+get_eg_inset <- function(df, seas, mod){
+  p <- ggplot(data=df %>%
+                filter(season == seas, model == mod) %>%
+                group_by(season, model, Feature) %>%
+                summarise(total_eg = sum(abs(mean))),
+              aes(x = Feature, y = total_eg, fill=Feature)) +
+    geom_col() +
+    scale_fill_viridis_d(option='plasma', end=.8) +
+    theme_void() +
+    theme(legend.position = 'none')
+  return(p)
+}
+
+## This function allows us to specify which facet to annotate
+annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, data){
+  layer(data = data, stat = StatIdentity, position = PositionIdentity, 
+        geom = ggplot2:::GeomCustomAnn,
+        inherit.aes = TRUE, params = list(grob = grob,
+                                          #x=-Inf, y=Inf, label = "Top-left", hjust = 0, vjust = 1))
+                                          xmin = xmin, xmax = xmax, 
+                                          ymin = ymin, ymax = ymax))
+}
