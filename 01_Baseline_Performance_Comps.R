@@ -41,48 +41,67 @@ read_replicates('results/baseline/RGCN/full_train', 'overall_metrics') %>%
 ##########
 ### Summary baseline comparison figure
 #########
+make_overall_performance_plot <- function(gwn_results, rgcn_results, error_metric, bias_metric, training_run = 'Full Train'){
+  p1 <- gwn_results$segs %>% mutate(run = 'GWN') %>% bind_rows(rgcn_results$segs %>% mutate(run = 'RGCN')) %>%
+    filter(train_type == training_run) %>%
+    seg_plotter_sf(., error_metric) +
+    geom_sf(data = dams,aes(fill = 'Reservoirs'), color='blue', size = .8) +
+    facet_wrap(~run) + labs(color = 'RMSE\n(°C)', fill = '',title = ' ') +
+    theme(legend.title = element_text(size=8))
+  
+  
+  ### Calculate Difference between baseline runs
+  baseline_diff <- seg_error_diff(rgcn_results$segs, gwn_results$segs, 'RGCN', 'GWN', shape=network)
+  
+  p2 <- baseline_diff %>% filter(metric == error_metric) %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
+    labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +
+    theme(title = element_text(size =8)) +
+    guides(fill = guide_legend(order = 2))
+  
+  p3 <- rgcn_results$months %>% filter(partition == 'tst',train_type==training_run) %>% mutate(model= 'RGCN') %>%
+    bind_rows(gwn_results$months %>% filter(partition == 'tst',train_type==training_run) %>% mutate(model = 'GWN')) %>%
+    pivot_longer(all_of(c(error_metric, bias_metric))) %>%
+    mutate(name = factor(name, levels = c(error_metric, bias_metric), labels = c('RMSE','Bias')),
+           month = month(date, label = T)) %>%
+    ggplot(aes(x=month, y=value, fill=model, shape = name)) +
+    scale_fill_viridis_d(end =.6) +
+    #scale_y_continuous(breaks = c(0,1,2)) +
+    geom_col(position = 'dodge') +
+    facet_wrap(~name,nrow=2, scales='free_y') +
+    theme_minimal() +
+    labs(x = 'Month', y = '°Celsius',fill = ' ') +
+    theme(axis.title = element_text(size=8)) 
+  
+  
+  layout <- rbind(c(1,1,1,2,2),
+                  c(1,1,1,2,2),
+                  c(1,1,1,2,2),
+                  c(3,3,3,3,3),
+                  c(3,3,3,3,3))
+  
+  g <- gridExtra::grid.arrange(p1,p2,p3, layout_matrix = layout)
+  
+  ggsave(sprintf('../drb_gwnet/figures/baseline_comps_%s_%s.png',error_metric,training_run),
+         plot = g, width = 5, height = 5, units = 'in')
+  
+}
 
-p1 <- gwn_stats$segs %>% mutate(run = 'GWN') %>% bind_rows(rgcn_stats$segs %>% mutate(run = 'RGCN')) %>%
-  filter(train_type == "Full Train") %>%
-  seg_plotter_sf(., 'rmse_mean') +
-  geom_sf(data = dams,aes(fill = 'Reservoirs'), color='blue', size = .8) +
-  facet_wrap(~run) + labs(color = 'RMSE\n(°C)', fill = '',title = ' ') +
-  theme(legend.title = element_text(size=8))
+make_overall_performance_plot(gwn_stats,rgcn_stats, "rmse_mean","mean_bias_mean")
 
-p1
-
-### Calculate Difference between baseline runs
-baseline_diff <- seg_error_diff(rgcn_stats$segs, gwn_stats$segs, 'RGCN', 'GWN', shape=network)
-
-p2 <- baseline_diff %>% filter(metric == 'rmse_mean') %>% seg_plotter_sf(., 'metric_diff',ll=-1,ul=2, diff = T, network_color = 'white')+
-  labs(title = 'RGCN minus GWN',subtitle='Blue=GWN outperformed RGCN', color = 'RMSE\nDifference') +
-  theme(title = element_text(size =8))
-
-p3 <- rgcn_stats$months %>% filter(partition == 'tst',train_type=='Full Train') %>% mutate(model= 'RGCN') %>%
-  bind_rows(gwn_stats$months %>% filter(partition == 'tst',train_type=='Full Train') %>% mutate(model = 'GWN')) %>%
-  pivot_longer(c(rmse_mean, mean_bias_mean)) %>%
-  mutate(name = factor(name, levels = c('rmse_mean', 'mean_bias_mean'), labels = c('RMSE','Bias')),
-         month = month(date, label = T)) %>%
-  ggplot(aes(x=month, y=value, fill=model, shape = name)) +
+#### Quick look at temperature
+rgcn_stats$temps %>% mutate(model = 'RGCN') %>%
+  bind_rows(gwn_stats$temps %>% mutate(model = 'GWN')) %>%
+  filter(partition == 'tst',
+         train_type == 'Full Train') %>%
+  select(mean_bias_mean, mean_bias_top10_mean,mean_bias_bot10_mean, model) %>%
+  pivot_longer(-model) %>%
+  mutate(name = case_when(name == 'mean_bias_top10_mean'~ 'Warmest 10%',
+                          name == 'mean_bias_bot10_mean'~ 'Coldest 10%',
+                          name== 'mean_bias_mean'~ 'Overall')) %>%
+  ggplot(., aes(x=name, y = value, fill = model)) +
+  geom_col(position='dodge') + 
   scale_fill_viridis_d(end =.6) +
-  #scale_y_continuous(breaks = c(0,1,2)) +
-  geom_col(position = 'dodge') +
-  facet_wrap(~name,nrow=2, scales='free_y') +
-  theme_minimal() +
-  labs(x = 'Month', y = '°Celsius',fill = ' ') +
-  theme(axis.title = element_text(size=8))
-
-
-layout <- rbind(c(1,1,1,2,2),
-                c(1,1,1,2,2),
-                c(1,1,1,2,2),
-                c(3,3,3,3,3),
-                c(3,3,3,3,3))
-
-g <- gridExtra::grid.arrange(p1,p2,p3, layout_matrix = layout)
-
-ggsave('../drb_gwnet/2_analysis/figures/baseline_comps.png', plot = g, width = 5, height = 5, units = 'in')
-
+  theme_minimal()
 
 ############
 #### Look at how performance varies across reservoir and non-reservoir sites

@@ -72,7 +72,6 @@ g<-gridExtra::grid.arrange(p1,p2,nrow=2,heights=c(.25,.75))
 ggsave('../drb_gwnet/2_analysis/figures/annual_reach_noise_ptft_scaled_shuffle.png', 
        plot=g, width=4, height=5, units = 'in')
 
-
 ############
 ##### Look at which reaches are sensitive
 ##########
