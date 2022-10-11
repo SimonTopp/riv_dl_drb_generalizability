@@ -1,5 +1,7 @@
 library(tidyverse)
 library(sf)
+library(elevatr)
+library(lubridate)
 
 ############
 #### Download Ecoregions and join to DRB obs to break into hold-out regions
@@ -117,7 +119,46 @@ network %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n(
   scale_color_viridis_c(trans = 'log10')
  
  #### Bland inset map
- ggplot(drb_bounds) +
+ggplot(drb_bounds) +
    geom_sf(fill='black', alpha = .9) +
    geom_sf(data = network,color='light blue') +
    ggthemes::theme_map()
+
+
+###############
+ #### Earth Engine CMIP5 Figure
+ #############
+
+## Bring in EE figure https://code.earthengine.google.com/92f75d994ee4c3a19e3685190829374b
+ 
+ee_fig <- imager::load.image('../drb_gwnet/figures/DRB_rpc85_network.png')
+  
+cmip_timeseries <- read_csv('../drb_gwnet/data/in/Nex_Projections.csv') %>%
+  mutate(year = as.numeric(stringr::str_extract(`system:index`, "\\d{4}")),
+         date = ymd(paste0(year,'-',month,'-01')))
+
+
+p1 <- grid::rasterGrob(ee_fig)
+
+  
+cmip_summ <- cmip_timeseries %>%
+  filter(month %in% c(6:8)) %>%
+  group_by(year, scenario)  %>%
+  summarise_at(vars(pr_median:pr_quartile75, tasmax_median:tasmax_quartile75),mean) %>%
+  mutate_at(vars(tasmax_median:tasmax_quartile75), ~(.)-273.15) %>%
+  mutate_at(vars(pr_median:pr_quartile75), ~(.)*1000000) %>%
+  ungroup() %>%
+  mutate(scenario = factor(scenario, labels = c('Historical', 'RCP 2.6', 'RCP 4.5', 'RCP 6.0', 'RCP 8.5')))
+
+p2 <- ggplot(cmip_summ, aes(x = year, y = tasmax_median, fill = scenario)) +
+  geom_ribbon(aes(ymax = tasmax_quartile75, ymin = tasmax_quartile25),
+              data = cmip_summ %>% filter(scenario != 'historical'), alpha = .1) + 
+  geom_line(aes(color = scenario)) +
+  #scale_color_viridis_d() +
+  #scale_fill_viridis_d() +
+  labs(x = 'Year', y = 'Temperature\n(°C)', fill = 'Scenario', color = 'Scenario') +
+  theme_bw() +
+  theme(legend.position = 'top')
+
+g<- gridExtra::grid.arrange(p1,p2, heights=c(.7,.3))
+ggsave('../drb_gwnet/figures/CMIP6_temp_projections.png', plot=g,width=5.5,heigh=6,units='in',dpi=300)
