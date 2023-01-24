@@ -5,6 +5,25 @@ reader <- function(id, files){
   df <- read_csv(grep(paste0(id,'/'), files, value = T),show_col_types = FALSE) %>% mutate(run = id)
 }
 
+## Quick function for overall pre-training metrics
+get_pre_train_performance = function(folder){
+  files <- list.files(folder, pattern = 'overall_metrics.csv', recursive = T, full.names = T)
+  files <- grep('rep_pre',files, value = T)
+  for(i in c(1:length(files))){
+    if(i == 1){
+      df <- read_csv(files[i], col_types = cols()) %>% mutate(replicate = i)
+    }
+    else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(replicate = i))
+    }
+  }
+  df <- df %>% group_by(across(!contains(c('rmse','nse','replicate','kge','bias','piw','picp')))) %>%
+    summarise(across(everything(),c(mean = ~mean(.x,na.rm=T),sd = ~sd(.x,na.rm=T)),.names = "{.col}_{.fn}")) %>%
+    ungroup() %>%
+    select(-c(replicate_mean, replicate_sd, variable))
+return(df)
+}
+
+pt_test <- get_pre_train_performance()
 ### Function for combining replicate model runs
 combine_replicates = function(folder, pattern,subfolders = F){
   

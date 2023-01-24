@@ -20,6 +20,9 @@ network <- readRDS('data_DRB/DRB_spatial/network.rds')$edges %>% st_as_sf
 dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
+##### Look at performance after pretraining
+pt_gwn <- get_pre_train_performance('results/baseline/GWN')
+pt_rgcn <- get_pre_train_performance('results/baseline/RGCN')
 
 ##### Aggregate performance metrics across replicate runs
 metrics <- c('overall_metrics','month_metrics','reach_metrics')
