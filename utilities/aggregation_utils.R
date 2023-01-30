@@ -23,7 +23,6 @@ get_pre_train_performance = function(folder){
 return(df)
 }
 
-pt_test <- get_pre_train_performance()
 ### Function for combining replicate model runs
 combine_replicates = function(folder, pattern,subfolders = F){
   

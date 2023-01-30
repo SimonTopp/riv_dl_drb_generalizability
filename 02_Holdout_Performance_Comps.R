@@ -215,9 +215,9 @@ g <- ggarrange(p1, p2, ncol=2,widths=c(.52,.48),common.legend = T,legend='right'
 annotate_figure(g,bottom = text_grob("Change in RMSE (ºC) from Baseline (Negative == Worse Performance)"),
                 left = text_grob("Hold-Out Scenario", rot = 90), top=text_grob('Geographic Shift                              Domain Shift', hjust=.5)
 )
+g
 
-
-ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_wSE.png',width = 6,height=3, units = 'in')
+ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_wSE.png',width = 6,height=3, units = 'in', dpi=300, bg='white')
 
 
 ################

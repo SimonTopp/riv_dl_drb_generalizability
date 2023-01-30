@@ -81,6 +81,7 @@ write_csv(test_groups_out, 'data_DRB/DRB_spatial/llo_groups.csv')
 p1 <-ggplot(ecoregs_clipped %>% st_simplify(dTolerance = 500)) + geom_sf(aes(fill = US_L3NAME)) +
   geom_sf(data = network, alpha=.3) +
   labs(fill = 'Level III\nEcoregions\nwithin the DRB') +
+  scale_fill_viridis_d(option='plasma',direction=-1) +
   ggthemes::theme_map() +
   theme(legend.position = c(.8,.5))#theme_minimal()
 
@@ -109,9 +110,9 @@ p3 <- temp_obs %>%
   ggthemes::theme_map() +
   theme(legend.position = c(0.8,.5))
  
-g <- gridExtra::grid.arrange(p1,p2,p3,nrow=1)
-
-ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.png',plot=g, width = 9, height=5, units = 'in', dpi=200)
+g<- gridExtra::grid.arrange(p1,p2,p3,nrow=1)
+g
+ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.png',plot=g, width = 9, height=5, units = 'in', dpi=300)
 
 network %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n())) %>%
   ggplot(aes(color = count)) +

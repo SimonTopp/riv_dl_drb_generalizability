@@ -192,13 +192,13 @@ p_summary <- ggplot(drb_bounds) +
 ##### Reach attribution portion
 patch <- (p1|p2|p4) + 
                   plot_layout(guides='collect') &
-        theme(legend.position = 'bottom') 
+        theme(legend.position = 'bottom', legend.key.width = unit(1, "cm")) 
 ### Summary inset
 g <- p_summary+(patch) +
   plot_layout(nrow=1,widths=c(.2,.8))
 g
 
-ggsave('../drb_gwnet/2_analysis/figures/reach_egs_4panel_2015.png',plot=g,width=6,height=3,units='in')
+ggsave('../drb_gwnet/2_analysis/figures/reach_egs_4panel_2015.png',plot=g,width=6,height=3,units='in',dpi=300)
 
 ###################
 ####### Seasonal Expected Gradients Analysis
