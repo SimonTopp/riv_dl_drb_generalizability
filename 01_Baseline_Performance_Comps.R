@@ -20,6 +20,44 @@ network <- readRDS('data_DRB/DRB_spatial/network.rds')$edges %>% st_as_sf
 dams <- readRDS('data_DRB/DRB_spatial/filtered_dams_reservoirs.rds')[[1]] %>%
   filter(!GRAND_ID %in% c(1591, 1584, 2242, 1584, 2212)) #Not on a reach
 
+hypertuning_stats <- hypertune_stats('results_superceded/seq_offset_hypertune','overall_metrics') %>%
+  filter(partition!='tst')
+
+plt_hypergrid <- function(data, metric,mod){
+  ggplot(data %>% filter(model==mod), 
+         aes(x=factor(offset),y=factor(seq),fill=!!sym(metric))) +
+    geom_raster() +
+    geom_text(aes(label=round(!!sym(metric),2))) +
+    theme(axis.title = element_blank(),
+          axis.ticks = element_blank(),
+          axis.text = element_blank()) +
+    facet_wrap(~partition)
+}
+p1 <- plt_hypergrid(hypertuning_stats,'rmse','GWN') +
+  scale_fill_viridis_c()
+p2 <- plt_hypergrid(hypertuning_stats,'nse','GWN') +
+  scale_fill_viridis_c()
+p3 <- plt_hypergrid(hypertuning_stats,'mean_bias','GWN') +
+                      scale_fill_gradient2()
+p4 <- plt_hypergrid(hypertuning_stats,'rmse','RGCN') +
+  scale_fill_viridis_c()
+p5 <- plt_hypergrid(hypertuning_stats,'nse','RGCN') +
+  scale_fill_viridis_c()
+p6 <- plt_hypergrid(hypertuning_stats,'mean_bias','RGCN') +
+  scale_fill_gradient2()
+
+gwn_hyp <- gridExtra::grid.arrange(p1,p2,p3, ncol=1)
+rgcn_hyp <- gridExtra::grid.arrange(p4,p5,p6, ncol=1)
+
+
+ggplot(hypertuning_stats, aes(x=factor(offset),y=factor(seq))) +
+  geom_raster(fill='white') +
+  geom_text(aes(label=paste0(pred_seq_len,' (',look_back,')'))) +
+  labs(title='Sequence Length (Look-back period)') +
+  theme(axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text = element_blank())  
+
 ##### Look at performance after pretraining
 pt_gwn <- get_pre_train_performance('results/baseline/GWN')
 pt_rgcn <- get_pre_train_performance('results/baseline/RGCN')

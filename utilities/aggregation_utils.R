@@ -23,6 +23,39 @@ get_pre_train_performance = function(folder){
 return(df)
 }
 
+
+
+### Function for reading in hypertuning runs
+hypertune_stats = function(folder, pattern){
+  
+  files <- list.files(folder, pattern=pattern, recursive=T, full.names=T)
+  print(sprintf("Summarising %s files", length(files)))
+  
+  for(i in c(1:length(files))){
+    dir = tolower(files[i])
+    
+    model = ifelse(grepl('rgcn',dir), 'RGCN',
+                   ifelse(grepl('gwn',dir), 'GWN'))
+    offset_seq = str_split(files[i],'/')[[1]][3]
+    offset <- as.numeric(str_split(offset_seq,'_')[[1]][1])
+    seq <- as.numeric(str_split(offset_seq,'_')[[1]][2])
+    if(offset != 1){
+      lb <- as.integer(offset*seq)
+      pred_sl <- as.integer(seq-lb)
+    }else{
+      lb <- 0
+      pred_sl <- as.integer(seq)
+    }
+    
+    if(i == 1){
+      df <- read_csv(files[i], col_types = cols()) %>% mutate(model = model, pred_seq_len = pred_sl, look_back=lb)
+    }
+    else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(model = model,  pred_seq_len = pred_sl, look_back=lb))
+    }
+  }
+  return(df)
+}
+
 ### Function for combining replicate model runs
 combine_replicates = function(folder, pattern,subfolders = F){
   
