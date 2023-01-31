@@ -5,6 +5,7 @@ library(feather)
 library(ggpubr)
 library(knitr)
 library(kableExtra)
+library(patchwork)
 
 
 ### Change Working Directory to River-dl
@@ -38,25 +39,39 @@ p1 <- plt_hypergrid(hypertuning_stats,'rmse','GWN') +
 p2 <- plt_hypergrid(hypertuning_stats,'nse','GWN') +
   scale_fill_viridis_c()
 p3 <- plt_hypergrid(hypertuning_stats,'mean_bias','GWN') +
-                      scale_fill_gradient2()
+  scale_fill_gradient2() +
+  labs(fill='bias')
 p4 <- plt_hypergrid(hypertuning_stats,'rmse','RGCN') +
   scale_fill_viridis_c()
 p5 <- plt_hypergrid(hypertuning_stats,'nse','RGCN') +
   scale_fill_viridis_c()
 p6 <- plt_hypergrid(hypertuning_stats,'mean_bias','RGCN') +
+  labs(fill='bias')+
   scale_fill_gradient2()
 
-gwn_hyp <- gridExtra::grid.arrange(p1,p2,p3, ncol=1)
-rgcn_hyp <- gridExtra::grid.arrange(p4,p5,p6, ncol=1)
 
-
-ggplot(hypertuning_stats, aes(x=factor(offset),y=factor(seq))) +
+hyp_legend <- ggplot(hypertuning_stats, aes(x=factor(offset),y=factor(seq))) +
   geom_raster(fill='white') +
   geom_text(aes(label=paste0(pred_seq_len,' (',look_back,')'))) +
-  labs(title='Sequence Length (Look-back period)') +
+  labs(title='Sequence Length \n(Look-back period)') +
   theme(axis.title = element_blank(),
         axis.ticks = element_blank(),
-        axis.text = element_blank())  
+        axis.text = element_blank())
+
+gwn_hyp <- gridExtra::grid.arrange(p1,p2,p3, ncol=1, top = 'GWN')
+rgcn_hyp <- gridExtra::grid.arrange(p4,p5,p6, ncol=1, top = 'RGCN')
+
+
+layout.matrix <- rbind(c(NA,2,2),
+                       c(1,2,2),
+                       c(NA,2,2))
+
+g <- gridExtra::grid.arrange(hyp_legend, gwn_hyp, layout_matrix=layout.matrix)
+ggsave('../drb_gwnet/2_analysis/figures/hypertune_grid_gwn.png',
+       plot=g, width=7,height=6, units='in',dpi=300)
+g <- gridExtra::grid.arrange(hyp_legend, rgcn_hyp, layout_matrix=layout.matrix)
+ggsave('../drb_gwnet/2_analysis/figures/hypertune_grid_rgcn.png',
+       plot=g, width=7,height=6, units='in',dpi=300)
 
 ##### Look at performance after pretraining
 pt_gwn <- get_pre_train_performance('results/baseline/GWN')
