@@ -40,7 +40,7 @@ hypertune_stats = function(folder, pattern){
     offset <- as.numeric(str_split(offset_seq,'_')[[1]][1])
     seq <- as.numeric(str_split(offset_seq,'_')[[1]][2])
     if(offset != 1){
-      lb <- as.integer(offset*seq)
+      lb <- as.integer(seq-offset*seq)
       pred_sl <- as.integer(seq-lb)
     }else{
       lb <- 0
@@ -48,9 +48,9 @@ hypertune_stats = function(folder, pattern){
     }
     
     if(i == 1){
-      df <- read_csv(files[i], col_types = cols()) %>% mutate(model = model, pred_seq_len = pred_sl, look_back=lb)
+      df <- read_csv(files[i], col_types = cols()) %>% mutate(model = model, pred_seq_len = pred_sl, look_back=lb, seq=seq, offset=offset)
     }
-    else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(model = model,  pred_seq_len = pred_sl, look_back=lb))
+    else{df <- df %>% bind_rows(read_csv(files[i], col_types = cols()) %>% mutate(model = model,  pred_seq_len = pred_sl, look_back=lb, seq=seq, offset=offset))
     }
   }
   return(df)
