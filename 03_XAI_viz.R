@@ -228,27 +228,27 @@ eg_seasonal <- eg_seasonal %>% filter(last_date %in% rgcn_dates) %>%
   pivot_longer(seg_tave_air:seginc_potet,names_to='Feature',values_to='EG') %>%
   mutate(season = factor(season, levels = c('DJF','MAM','JJA','SON')),
          Feature = factor(Feature, levels = c('seg_tave_air','seg_rain','seginc_potet','seginc_swrad'),
-                          labels= c('Air Temperature', 'Precipitatoin','Potent. ET','SW Radiation'))) 
+                          labels= c('Air Temperature', 'Precipitation','Potential Evapotranspiration','Shortwave Radiation'))) 
 
 
 ####### Look at cumulative attribution over time for each sequence
 
 ### Cumulative Attribution by Feature
-cumsums <- calc_cumumalitive_sum(eg_seasonal, 60, 'GWN', c("Feature","last_date")) %>%
-  bind_rows(calc_cumumalitive_sum(eg_seasonal,180,'RGCN', c("Feature","last_date")))
+cumsums <- calc_cumulative_sum(eg_seasonal, 60, 'GWN', c("Feature","last_date")) %>%
+  bind_rows(calc_cumulative_sum(eg_seasonal,180,'RGCN', c("Feature","last_date")))
 
 ggplot(cumsums, aes(x = seq_num,y=cumsum_prop, group=last_date)) + geom_line(alpha=.2) +
   theme_bw() +
   labs(x='Sequence Day',y = "Cumulative\nAttribution") +
   scale_y_continuous(labels = scales::percent_format()) +
-  theme(axis.title.x = element_blank()) +
+  #theme(axis.title.x = element_blank()) +
   facet_grid(Feature~model, scales = 'free') 
 
-ggsave('../drb_gwnet/2_analysis/figures/cumulative_attribution_by_feature.png',width=4,height=6,units='in')
+ggsave('../drb_gwnet/2_analysis/figures/cumulative_attribution_by_feature.png',width=6,height=6,units='in')
 
 ## Total Cumulative Attribution (not by feature)
-cumsums <- calc_cumsum(eg_seasonal, 60, 'GWN', c("last_date")) %>%
-  bind_rows(calc_cumsum(eg_seasonal,180,'RGCN', c("last_date")))
+cumsums <- calc_cumulative_sum(eg_seasonal, 60, 'GWN', c("last_date")) %>%
+  bind_rows(calc_cumulative_sum(eg_seasonal,180,'RGCN', c("last_date")))
 
 ### Calculate day afterwhich 90% of attribution comes from
 cumsums %>% filter(cumsum_prop > .10) %>%
@@ -269,7 +269,7 @@ cumsums %>% filter(cumsum_prop > .60) %>%
 #Top panel for figure
 p2 <- ggplot(cumsums, aes(x = seq_num,y= cumsum_prop, group=last_date)) + 
   geom_line(alpha=.2) +
-  geom_hline(aes(yintercept=.8)) +
+  #geom_hline(aes(yintercept=.8)) +
   theme_bw() +
   labs(x='Sequence Day',y = "Cumulative\nAttribution") +
   scale_y_continuous(labels = scales::percent_format()) +
@@ -293,7 +293,9 @@ p1 <- egs_seasonal_long %>%
   theme(legend.position = 'bottom',
         legend.title = element_blank()) +
   #guides(color=guide_legend(nrow=2)) +
-  facet_grid(season~model,scales='free')
+  facet_grid(season~model,scales='free') +
+  guides(fill=guide_legend(nrow=2,byrow=TRUE),
+         color = guide_legend(nrow=2,byrow=T))
 
 p1
 
@@ -325,5 +327,3 @@ p1 <- p1 + annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'D
 
 
 g <- gridExtra::grid.arrange(p2,p1,ncol = 1, heights= c(.2,.8))
-
-ggsave('../drb_gwnet/2_analysis/figures/seasonal_egs_w_insets_cumulative.png',plot=g, width=6, height=6, units = 'in')
