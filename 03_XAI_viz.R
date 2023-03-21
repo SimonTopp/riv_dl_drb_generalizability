@@ -46,7 +46,7 @@ baseline %>% group_by(model) %>%
 p1 <- ggplot(baseline, aes(x = diffs)) +
   geom_histogram(aes(fill=model),position='identity', alpha = .6) +
   scale_fill_viridis_d(end = .7)+
-  labs(x = 'Sensitivity to Spatial Noise (∆ ºC)',
+  labs(x = 'Sensitivity to Spatial Noise (Δ ºC)',
        y = 'Reach \nCount',
        fill = 'Model') +
   theme_minimal()
@@ -69,10 +69,10 @@ p2 <- baseline %>%
 
 g<-gridExtra::grid.arrange(p1,p2,nrow=2,heights=c(.25,.75))
 
-ggsave('../drb_gwnet/2_analysis/figures/annual_reach_noise_ptft_scaled_shuffle.png', 
-       plot=g, width=4, height=5, units = 'in')
+ggsave('../drb_gwnet/2_analysis/figures/annual_reach_noise_ptft_scaled_shuffle.pdf',
+       plot=g, width=3.5, height=4.2, units = 'in', dpi = 400, device = cairo_pdf)
 
-############
+ ############
 ##### Look at which reaches are sensitive
 ##########
 sensitivity_ranks <- reach_noise %>%
@@ -198,7 +198,7 @@ g <- p_summary+(patch) +
   plot_layout(nrow=1,widths=c(.2,.8))
 g
 
-ggsave('../drb_gwnet/2_analysis/figures/reach_egs_4panel_2015.png',plot=g,width=6,height=3,units='in',dpi=300)
+ggsave('../drb_gwnet/2_analysis/figures/reach_egs_4panel_2015.pdf',plot=g, width=6,height=3,units='in',dpi=300)
 
 ###################
 ####### Seasonal Expected Gradients Analysis
@@ -327,3 +327,5 @@ p1 <- p1 + annotation_custom2(grob=ggplotGrob(get_eg_inset(egs_seasonal_long, 'D
 
 
 g <- gridExtra::grid.arrange(p2,p1,ncol = 1, heights= c(.2,.8))
+
+ggsave('../drb_gwnet/2_analysis/figures/seasonal_egs_w_insets_cumulative.pdf',plot=g, width=6, height=6, units = 'in')

@@ -110,9 +110,9 @@ p3 <- temp_obs %>%
   ggthemes::theme_map() +
   theme(legend.position = c(0.8,.5))
  
-g<- gridExtra::grid.arrange(p1,p2,p3,nrow=1)
+g <- gridExtra::grid.arrange(p1,p2,p3,nrow=1)
 g
-ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.png',plot=g, width = 9, height=5, units = 'in', dpi=300)
+ggsave('../drb_gwnet/2_analysis/figures/Holdout_Regions.pdf', plot=g, width = 9, height=5, units = 'in', dpi=300)
 
 network %>% left_join(temp_obs %>% group_by(seg_id_nat) %>% summarise(count = n())) %>%
   ggplot(aes(color = count)) +

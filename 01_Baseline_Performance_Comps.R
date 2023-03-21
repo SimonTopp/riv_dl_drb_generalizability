@@ -137,7 +137,7 @@ make_overall_performance_plot <- function(gwn_results, rgcn_results, error_metri
   
   g <- gridExtra::grid.arrange(p1,p2,p3, layout_matrix = layout)
   
-  ggsave(sprintf('../drb_gwnet/figures/baseline_comps_%s_%s.png',error_metric,training_run),
+  ggsave(sprintf('../drb_gwnet/figures/baseline_comps_%s_%s.pdf',error_metric,training_run),
          plot = g, width = 5, height = 5, units = 'in')
   
 }

@@ -109,7 +109,9 @@ full_temps %>% filter(partition == 'tst',
   column_spec(5, bold = c(F,F,F,F,T,F)) %>%
   pack_rows('Domain Shift',2,3)%>%
   pack_rows('Geographic Shift',4,6) %>%
-  add_header_above(c(" ", "RMSE (ºC); mean (SE)" = 4))
+  add_header_above(c(" ", "RMSE (ºC); mean (SE)" = 4)) %>%
+  save_kable(.,file = '../drb_gwnet/2_analysis/figures/RMSE_performance_table.jpeg', vwidth=615, vheight=337,zoom=2.5,density=500)
+
 
 ### Manuscript Table S1 Performance Comparison (NSE)
 
@@ -144,7 +146,7 @@ full_temps %>% filter(partition == 'tst',
   pack_rows('Domain Shift',2,3)%>%
   pack_rows('Geographic Shift',4,6) %>%
   add_header_above(c(" ", "NSE (ºC); mean (SE)" = 4))# %>%
-  #as_image(file = '../drb_gwnet/2_analysis/figures/NSE_performance_table.png', width = 4, zoom = 2)
+  #save_kable(.,file = '../drb_gwnet/2_analysis/figures/NSE_performance_table.png', width = 4, zoom = 2)
 
 
 
@@ -215,9 +217,8 @@ g <- ggarrange(p1, p2, ncol=2,widths=c(.52,.48),common.legend = T,legend='right'
 annotate_figure(g,bottom = text_grob("Change in RMSE (ºC) from Baseline (Negative == Worse Performance)"),
                 left = text_grob("Hold-Out Scenario", rot = 90), top=text_grob('Geographic Shift                              Domain Shift', hjust=.5)
 )
-g
 
-ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_wSE.png',width = 6,height=3, units = 'in', dpi=300, bg='white')
+ggsave('../drb_gwnet/2_analysis/figures/Overall_Performance_wSE.pdf',width = 6,height=3, units = 'in', bg='white')
 
 
 ################
